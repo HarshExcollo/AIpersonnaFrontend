@@ -60,8 +60,9 @@ const LoginForm: React.FC = () => {
         throw new Error(data.error || 'Login failed');
       }
 
-      // Store the token
+      // Store the token and user
       localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
       
       // Login successful - redirect to Discovery page
       navigate('/', { replace: true });
