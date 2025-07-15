@@ -41,8 +41,7 @@ const ViewPersonaPage: React.FC<ViewPersonaPageProps> = ({
     const fetchPersonaData = async () => {
       try {
         setLoading(true);
-        const response = await fetch(
-          `http://localhost:3000/api/personas/${id || "1"}`
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/${id || "1"}`
         );
 
         if (!response.ok) {

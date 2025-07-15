@@ -29,7 +29,7 @@ const ChatHistoryPage: React.FC = () => {
   const [personas, setPersonas] = useState<Persona[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:3000/api/personas")
+    fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.data)) {
