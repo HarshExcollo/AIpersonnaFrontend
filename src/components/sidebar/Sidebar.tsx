@@ -12,7 +12,6 @@ import {
   ListSubheader,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import UploadIcon from "@mui/icons-material/UploadFile";
 import PersonIcon from "@mui/icons-material/PersonOutline";
 import SearchIcon from "@mui/icons-material/Search";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";

@@ -159,7 +159,6 @@ const ViewPersonaPage: React.FC<ViewPersonaPageProps> = ({
 
   // Get similar personas (all except the current one)
   // (You may want to fetch this from backend in the future)
-  // const similarPersonas = mockPersonas.filter((p) => p.id !== id);
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#fff" }}>

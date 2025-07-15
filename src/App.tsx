@@ -6,7 +6,6 @@ import {
   Navigate,
   useLocation,
   useNavigate,
-  useParams,
 } from "react-router-dom";
 import { ThemeProvider, createTheme, CssBaseline } from "@mui/material";
 import Discovery from "./pages/Discovery";
@@ -87,9 +86,8 @@ const DiscoveryWithNav: React.FC = () => {
 };
 
 const ViewPersonaPageWithParams: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const persona = mockPersonas.find((p) => p.id === id) || mockPersonas[0];
-  return <ViewPersonaPage persona={persona} />;
+  // No need to pass persona prop; ViewPersonaPage fetches data itself
+  return <ViewPersonaPage />;
 };
 
 // Add this wrapper inside App.tsx

@@ -19,7 +19,6 @@ import {
   useMediaQuery,
   Dialog,
 } from "@mui/material";
-import { IoChatbubbleEllipsesOutline } from "react-icons/io5";
 import { CiSearch, CiSettings } from "react-icons/ci";
 import { useNavigate, useLocation } from "react-router-dom";
 import MenuIcon from "@mui/icons-material/Menu";

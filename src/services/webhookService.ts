@@ -118,10 +118,10 @@ export const isWebhookPersona = (personaId: string): boolean => {
 };
 
 // Test function to check if webhook is active
-export const testWebhookConnection = async (): Promise<boolean> => {
+export const testWebhookConnection = async (personaId: string): Promise<boolean> => {
   try {
     // Get or create session ID
-    const sessionId = getSessionId();
+    const sessionId = getSessionId(personaId);
 
     const response = await fetch(WEBHOOK_URL, {
       method: "POST",

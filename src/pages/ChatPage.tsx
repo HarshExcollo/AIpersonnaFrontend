@@ -165,7 +165,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
         const data = await response.json();
         if (data.success && Array.isArray(data.chats)) {
           // Convert chat data to message format
-          const loadedMessages = data.chats.flatMap((chat: any) => [
+          const loadedMessages = data.chats.flatMap((chat: { user_message: string; ai_response: string }) => [
             { sender: "user" as const, text: chat.user_message },
             { sender: "ai" as const, text: chat.ai_response },
           ]);
@@ -270,7 +270,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
   const SIDEBAR_WIDTH = isMobile ? 280 : 160;
 
   // Handler to open persona switcher
-  const handleProfileClick = (event: React.MouseEvent<HTMLElement>) => {
+  const handleRoleClick = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
     setSwitcherOpen(true);
   };
@@ -279,20 +279,9 @@ export default function ChatPage({ onBack }: ChatPageProps) {
     setSwitcherOpen(false);
     setAnchorEl(null);
   };
-  // Handler to switch persona
-  const handlePersonaSelect = (p: Persona) => {
-    // Instead of updating local state, navigate to the new persona's chat route
-    handleSwitcherClose();
-    navigate(`/chat/${p.id}`);
-  };
 
   const handleAvatarClick = () => {
     navigate(`/view-persona/${persona.id}`);
-  };
-
-  const handleRoleClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-    setSwitcherOpen(true);
   };
 
   // Updated handleSendMessage with session ID logic and chat persistence

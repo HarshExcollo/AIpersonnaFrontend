@@ -13,12 +13,10 @@ export interface Chat {
 
 interface ChatHistoryListProps {
   chats: Chat[];
-  onSessionClick?: (index: number) => void;
 }
 
 const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
   chats,
-  onSessionClick,
 }) => (
   <Box ml={2}>
     {chats.map((chat, idx) => (
