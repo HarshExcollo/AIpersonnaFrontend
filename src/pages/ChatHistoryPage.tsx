@@ -9,12 +9,20 @@ import ChatHistoryList, {
 } from "../components/chatHistory/ChatHistoryList";
 import type { Persona } from "../types";
 
+interface ChatMessage {
+  persona: string;
+  user_message: string;
+  ai_response: string;
+  timestamp: string;
+  session_id?: string;
+}
+
 interface SessionChat {
   session_id: string;
   persona: string;
   last_message: string;
   date: string;
-  chats: any[];
+  chats: ChatMessage[];
 }
 
 const ChatHistoryPage: React.FC = () => {
@@ -74,7 +82,7 @@ const ChatHistoryPage: React.FC = () => {
     }
 
     const token = localStorage.getItem("token");
-    const fetchUrl = `http://localhost:3000/api/personas/chats?user=${userId}&persona=all`;
+    const fetchUrl = `${import.meta.env.VITE_BACKEND_URL}/api/personas/chats?user=${userId}&persona=all`;
     console.log("Fetch URL:", fetchUrl);
 
     // Fetch all chats for the user
@@ -92,8 +100,8 @@ const ChatHistoryPage: React.FC = () => {
         if (data.success && Array.isArray(data.chats)) {
           console.log("All fetched chats:", data.chats);
           // Group chats by persona+session_id for legacy chats
-          const sessionMap: { [session_id: string]: any[] } = {};
-          data.chats.forEach((chat: any) => {
+          const sessionMap: { [session_id: string]: ChatMessage[] } = {};
+          data.chats.forEach((chat: ChatMessage) => {
             let sessionId;
             if (chat.session_id) {
               sessionId = chat.session_id;
