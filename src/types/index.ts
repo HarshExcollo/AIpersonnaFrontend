@@ -7,6 +7,7 @@ export interface Persona {
   hasStartChat: boolean;
   traits?: any[];
   updatedAt?: string;
+  description?: string;
 }
 
 export interface FilterOption {

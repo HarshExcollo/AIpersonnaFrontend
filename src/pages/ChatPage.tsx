@@ -13,7 +13,6 @@ import {
 } from "@mui/material";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import { IoSend } from "react-icons/io5";
-import AutorenewIcon from "@mui/icons-material/Autorenew";
 import type { Persona } from "../types";
 import ChatHeader from "../components/ChatHeader";
 import Sidebar from "../components/sidebar/Sidebar";
@@ -269,11 +268,6 @@ export default function ChatPage({ onBack }: ChatPageProps) {
   const handleSidebarClose = () => setSidebarOpen(false);
   const SIDEBAR_WIDTH = isMobile ? 280 : 160;
 
-  // Handler to open persona switcher
-  const handleRoleClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-    setSwitcherOpen(true);
-  };
   // Handler to close persona switcher
   const handleSwitcherClose = () => {
     setSwitcherOpen(false);
@@ -611,40 +605,50 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                   {persona.name}
                 </Typography>
 
-                {/* Role - clicks to show persona switcher */}
-                <Box
+                {/* Role */}
+                <Typography
+                  variant="subtitle1"
                   sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    mb: 0,
-                    flexDirection: { xs: "column", sm: "row" },
-                    cursor: "pointer",
-                    borderRadius: 1,
-                    px: 1,
-                    py: 0.5,
-                    transition: "background-color 0.2s ease-in-out",
-                    "&:hover": {
-                      backgroundColor: "#f5f5f5",
-                    },
+                    color: "#2e7d32",
+                    fontWeight: 400,
+                    fontSize: { xs: 16, sm: 18 },
+                    textAlign: "center",
                   }}
-                  onClick={handleRoleClick}
                 >
+                  {persona.role}
+                </Typography>
+
+                {/* Department */}
+                {persona.department && (
                   <Typography
-                    variant="subtitle1"
+                    variant="body2"
                     sx={{
-                      color: "#2e7d32",
+                      color: "#666",
                       fontWeight: 400,
-                      fontSize: { xs: 16, sm: 18 },
+                      fontSize: { xs: 14, sm: 16 },
                       textAlign: "center",
+                      mt: 0.5,
                     }}
                   >
-                    {persona.role}
+                    {persona.department}
                   </Typography>
-                  <AutorenewIcon
-                    sx={{ color: "#2e7d32", fontSize: { xs: 16, sm: 18 } }}
-                  />
-                </Box>
+                )}
+
+                {/* Description */}
+                {persona.description && (
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "#888",
+                      fontWeight: 400,
+                      fontSize: { xs: 13, sm: 15 },
+                      textAlign: "center",
+                      mt: 0.5,
+                    }}
+                  >
+                    {persona.description}
+                  </Typography>
+                )}
               </Box>
 
               {/* Messages */}
