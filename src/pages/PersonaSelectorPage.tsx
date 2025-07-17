@@ -41,16 +41,19 @@ const PersonaSelectorPage: React.FC = () => {
     navigate(`/view-persona/${persona.id}`);
   };
 
-  const handleSendMessage = (messageText: string) => {
+  const handleSendMessage = (msgObj: { message: string; fileUrl?: string; fileType?: string }) => {
     // For now, just log the message. Later you can implement logic to:
     // 1. Select a default persona or ask user to select one
     // 2. Navigate to chat with the message pre-filled
-    console.log("Message to send:", messageText);
+    console.log("Message to send:", msgObj.message);
+    if (msgObj.fileUrl) {
+      console.log("File attached:", msgObj.fileUrl, msgObj.fileType);
+    }
 
     // Example: Navigate to first persona with message
     if (filteredPersonas.length > 0) {
       navigate(`/chat/${filteredPersonas[0].id}`, {
-        state: { initialMessage: messageText },
+        state: { initialMessage: msgObj.message },
       });
     }
   };

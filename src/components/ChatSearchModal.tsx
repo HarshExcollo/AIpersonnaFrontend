@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Modal, Box, InputBase, List, ListItem, Typography, Paper, Divider, Button } from "@mui/material";
+import { Modal, Box, InputBase, List, ListItem, Typography, Paper, Divider } from "@mui/material";
 
 interface ChatMessage {
   sender: "user" | "ai";

@@ -677,8 +677,8 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                               )}
                               {msg.text && (
                                 msg.text.match(/(\n\s*[-*]|^\d+\.|^#)/m) ? (
-                                  <FormattedOutput content={msg.text} />
-                                ) : (
+                            <FormattedOutput content={msg.text} />
+                          ) : (
                                   <Box component="span">{msg.text}</Box>
                                 )
                               )}
