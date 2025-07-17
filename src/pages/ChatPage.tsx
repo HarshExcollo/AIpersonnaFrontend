@@ -162,12 +162,21 @@ export default function ChatPage({ onBack }: ChatPageProps) {
       if (response.ok) {
         const data = await response.json();
         if (data.success && Array.isArray(data.chats)) {
+          console.log('Loading chat history:', data.chats);
           // Convert chat data to message format
-          const loadedMessages = data.chats.flatMap((chat: { user_message: string; ai_response: string; fileUrl?: string; fileType?: string }) => [
-            { sender: "user" as const, text: chat.user_message, fileUrl: chat.fileUrl, fileType: chat.fileType },
-            { sender: "ai" as const, text: chat.ai_response },
-          ]);
+          const loadedMessages = data.chats.flatMap((chat: { user_message: string; ai_response: string; fileUrl?: string; fileType?: string }) => {
+            console.log('Processing chat:', { 
+              user_message: chat.user_message, 
+              fileUrl: chat.fileUrl, 
+              fileType: chat.fileType 
+            });
+            return [
+              { sender: "user" as const, text: chat.user_message, fileUrl: chat.fileUrl, fileType: chat.fileType },
+              { sender: "ai" as const, text: chat.ai_response },
+            ];
+          });
 
+          console.log('Loaded messages:', loadedMessages);
           setMessages(loadedMessages);
           setCurrentSessionId(sessionId);
         }
@@ -401,21 +410,25 @@ export default function ChatPage({ onBack }: ChatPageProps) {
 
       // Store both user message and AI response in MongoDB
     const token = localStorage.getItem("token");
+    const chatData = {
+      user: userId,
+      persona: personaId,
+      session_id: sessionId,
+      user_message: String(trimmed),
+      ai_response: aiResponse,
+      fileUrl,
+      fileType,
+    };
+    
+    console.log('Storing chat with file info:', chatData);
+    
     const storePromise = fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/chats`, {
         method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-        body: JSON.stringify({
-          user: userId,
-          persona: personaId,
-          session_id: sessionId,
-          user_message: String(trimmed),
-          ai_response: aiResponse,
-        fileUrl,
-        fileType,
-        }),
+        body: JSON.stringify(chatData),
       })
         .then((res) => {
           if (!res.ok) {
