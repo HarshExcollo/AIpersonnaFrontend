@@ -504,7 +504,11 @@ export default function ChatPage({ onBack }: ChatPageProps) {
       >
         {/* Sidebar */}
         {sidebarOpen && (
-          <Sidebar onClose={handleSidebarClose} currentPersonaId={persona.id} />
+          <Sidebar 
+            onClose={handleSidebarClose} 
+            currentPersonaId={persona.id}
+            onSearchChats={() => setSearchModalOpen(true)}
+          />
         )}
 
         {/* Main chat area wrapper */}

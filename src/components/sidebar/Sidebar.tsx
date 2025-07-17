@@ -37,7 +37,8 @@ interface RecentChat {
 const Sidebar: React.FC<{
   onClose?: () => void;
   currentPersonaId?: string;
-}> = ({ onClose, currentPersonaId }) => {
+  onSearchChats?: () => void;
+}> = ({ onClose, currentPersonaId, onSearchChats }) => {
   const navigate = useNavigate();
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [favoritePersonas, setFavoritePersonas] = useState<FavoritePersona[]>([]);
@@ -169,9 +170,11 @@ const Sidebar: React.FC<{
   // Handler for search chats click
   const handleSearchChats = () => {
     // Trigger search modal in parent component
-    // For now, we'll just close the sidebar
+    if (onSearchChats) {
+      onSearchChats();
+    }
+    // Close sidebar after opening search modal
     if (onClose) onClose();
-    // You can emit an event or use a callback to open search modal
   };
 
   return (
