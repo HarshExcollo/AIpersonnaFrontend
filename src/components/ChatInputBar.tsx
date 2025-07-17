@@ -33,7 +33,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   sidebarWidth = 160,
   maxWidth = 960,
 }) => {
-  const [messageInput, setMessageInput] = useState(value);
+  // Remove internal messageInput state; use value prop directly
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -41,14 +41,13 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
 
   // Handle input change
   const handleInputChange = (newValue: string) => {
-    setMessageInput(newValue);
     onChange?.(newValue);
   };
 
   // Handle send message (with file upload)
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const trimmed = messageInput.trim();
+    const trimmed = value.trim();
     if ((!trimmed && !selectedFile) || disabled) return;
 
     let fileUrl = undefined;
@@ -63,7 +62,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
           method: 'POST',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           body: formData,
-        } as any);
+        });
         const data = await res.json();
         if (data.success) {
           fileUrl = data.fileUrl;
@@ -73,7 +72,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
           setUploading(false);
           return;
         }
-      } catch (err) {
+      } catch {
         alert('File upload error.');
         setUploading(false);
         return;
@@ -83,12 +82,11 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
 
     // Pass fileUrl and fileType to onSend if present
     if (onSend) {
-      (onSend as any)({ message: trimmed, fileUrl, fileType });
+      onSend({ message: trimmed, fileUrl, fileType });
     }
-    setMessageInput("");
     setSelectedFile(null);
     setFilePreviewUrl(null);
-    onChange?.("");
+    if (onChange) onChange("");
   };
 
   // Handle file upload
@@ -120,8 +118,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
 
   // Handle suggestion click
   const handleSuggestionClick = (suggestion: string) => {
-    setMessageInput(suggestion);
-    onChange?.(suggestion);
+    if (onChange) onChange(suggestion);
     // Do NOT auto-send the message
   };
 
@@ -329,7 +326,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
             }}
             placeholder={placeholder}
             inputProps={{ "aria-label": placeholder }}
-            value={messageInput}
+            value={value}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -348,8 +345,8 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
           <IconButton
             sx={{
               backgroundColor:
-                messageInput.trim() && !disabled ? "#00875A" : "#d1d5db",
-              color: messageInput.trim() && !disabled ? "white" : "#6b7280",
+                value.trim() && !disabled ? "#00875A" : "#d1d5db",
+              color: value.trim() && !disabled ? "white" : "#6b7280",
               width: { xs: 36, sm: 40 },
               height: { xs: 36, sm: 40 },
               borderRadius: "50%",
@@ -357,13 +354,13 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
               flexShrink: 0,
               "&:hover": {
                 backgroundColor:
-                  messageInput.trim() && !disabled ? "#1b5e20" : "#d1d5db",
+                  value.trim() && !disabled ? "#1b5e20" : "#d1d5db",
                 transform:
-                  messageInput.trim() && !disabled ? "scale(1.05)" : "none",
+                  value.trim() && !disabled ? "scale(1.05)" : "none",
               },
             }}
             onClick={() => handleSendMessage()}
-            disabled={!messageInput.trim() || disabled}
+            disabled={!value.trim() || disabled}
           >
             <IoSend size={16} />
           </IconButton>

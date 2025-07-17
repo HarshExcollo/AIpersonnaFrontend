@@ -6,8 +6,13 @@ import {
   ClickAwayListener,
   useTheme,
   useMediaQuery,
+  IconButton,
+  TextField,
 } from "@mui/material";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import EditIcon from "@mui/icons-material/Edit";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
 import type { Persona } from "../types";
 import ChatHeader from "../components/ChatHeader";
 import Sidebar from "../components/sidebar/Sidebar";
@@ -17,6 +22,7 @@ import FormattedOutput from "../components/FormattedOutput";
 import { getSessionId, startNewSession } from "../utils/session";
 import ChatInputBar from "../components/ChatInputBar";
 import ChatSearchModal from "../components/ChatSearchModal";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 interface ChatPageProps {
   onBack: () => void;
@@ -101,10 +107,12 @@ export default function ChatPage({ onBack }: ChatPageProps) {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [messages, setMessages] = useState<
-    { sender: "user" | "ai"; text: string; fileUrl?: string; fileType?: string; isTyping?: boolean }[]
+    { sender: "user" | "ai"; text: string; fileUrl?: string; fileType?: string; isTyping?: boolean; id?: string }[]
   >([]);
   const [messageInput, setMessageInput] = useState("");
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const [userAvatar, setUserAvatar] = useState("");
@@ -164,15 +172,16 @@ export default function ChatPage({ onBack }: ChatPageProps) {
         if (data.success && Array.isArray(data.chats)) {
           console.log('Loading chat history:', data.chats);
           // Convert chat data to message format
-          const loadedMessages = data.chats.flatMap((chat: { user_message: string; ai_response: string; fileUrl?: string; fileType?: string }) => {
+                    const loadedMessages = data.chats.flatMap((chat: { _id: string; user_message: string; ai_response: string; fileUrl?: string; fileType?: string }) => {
             console.log('Processing chat:', { 
+              _id: chat._id,
               user_message: chat.user_message, 
               fileUrl: chat.fileUrl, 
               fileType: chat.fileType 
             });
             return [
-              { sender: "user" as const, text: chat.user_message, fileUrl: chat.fileUrl, fileType: chat.fileType },
-              { sender: "ai" as const, text: chat.ai_response },
+              { sender: "user" as const, text: chat.user_message, fileUrl: chat.fileUrl, fileType: chat.fileType, id: chat._id },
+            { sender: "ai" as const, text: chat.ai_response },
             ];
           });
 
@@ -334,6 +343,110 @@ export default function ChatPage({ onBack }: ChatPageProps) {
     setSearchModalOpen(false);
   };
 
+  // Edit message handlers
+  const handleEditMessage = (messageId: string, currentText: string) => {
+    setEditingMessageId(null); // Cancel inline edit mode if any
+    setEditingText("");
+    setMessageInput(currentText); // Place message in chat bar
+    // Remove all messages from this message onward
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === messageId);
+      if (idx === -1) return prev;
+      return prev.slice(0, idx);
+    });
+  };
+
+  const handleSaveEdit = async (messageId: string) => {
+    try {
+      // 1. Update user message in backend
+      const token = localStorage.getItem("token");
+      const editRes = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/chats/edit`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          messageId: messageId,
+          newText: editingText
+        })
+      });
+
+      if (editRes.ok) {
+        const msgIdx = messages.findIndex((m) => m.id === messageId);
+        if (msgIdx === -1) return;
+
+        // 2. Update frontend state instantly: update user message, show AI typing
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          // Update user message
+          newMessages[msgIdx] = { ...newMessages[msgIdx], text: editingText };
+          // Replace next AI message with typing indicator
+          if (
+            msgIdx + 1 < newMessages.length &&
+            newMessages[msgIdx + 1].sender === "ai"
+          ) {
+            newMessages[msgIdx + 1] = {
+              sender: "ai",
+              text: "",
+              isTyping: true,
+            };
+          }
+          return newMessages;
+        });
+        setEditingMessageId(null);
+        setEditingText("");
+
+        // 3. Call webhook with the new message
+        const personaId = persona?.id ? String(persona.id) : "";
+        const personaName = persona?.name || "";
+        let aiResponse = "";
+        if (isWebhookPersona(personaId)) {
+          aiResponse = await sendToWebhook(editingText, personaId, personaName);
+        }
+
+        // 4. Update AI response in backend
+        await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/chats/edit`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            messageId: messageId,
+            newText: editingText, // (optional, but safe to send)
+            newAIResponse: aiResponse
+          })
+        });
+
+        // 5. Update frontend state with new AI response
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          if (
+            msgIdx + 1 < newMessages.length &&
+            newMessages[msgIdx + 1].sender === "ai"
+          ) {
+            newMessages[msgIdx + 1] = {
+              ...newMessages[msgIdx + 1],
+              text: aiResponse,
+              isTyping: false,
+            };
+          }
+          return newMessages;
+        });
+      } else {
+        console.error("Failed to update message in backend");
+      }
+    } catch (error) {
+      console.error("Error updating message:", error);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditingText("");
+  };
+
   if (!persona) {
     return <div>Persona not found</div>;
   }
@@ -362,10 +475,11 @@ export default function ChatPage({ onBack }: ChatPageProps) {
     const fileType = msgObj.fileType;
     if (!trimmed && !fileUrl) return;
 
-    // Add user message
+    // Add user message with unique ID
+    const messageId = Date.now().toString();
     setMessages((prev) => [
       ...prev,
-      { sender: "user", text: trimmed, fileUrl, fileType },
+      { sender: "user", text: trimmed, fileUrl, fileType, id: messageId },
     ]);
     setMessageInput("");
 
@@ -408,13 +522,13 @@ export default function ChatPage({ onBack }: ChatPageProps) {
       }
     }
 
-      // Store both user message and AI response in MongoDB
+        // Store both user message and AI response in MongoDB
     const token = localStorage.getItem("token");
     const chatData = {
-      user: userId,
-      persona: personaId,
-      session_id: sessionId,
-      user_message: String(trimmed),
+            user: userId,
+            persona: personaId,
+            session_id: sessionId,
+            user_message: String(trimmed),
       ai_response: aiResponse,
       fileUrl,
       fileType,
@@ -435,6 +549,18 @@ export default function ChatPage({ onBack }: ChatPageProps) {
           throw new Error("Failed to store chat");
           }
           return res.json();
+        })
+        .then((data) => {
+          // Update the user message with the MongoDB _id for editing capability
+          if (data.success && data.chat && data.chat._id) {
+            setMessages((prev) => 
+              prev.map((msg) => 
+                msg.id === messageId && msg.sender === "user" 
+                  ? { ...msg, id: data.chat._id }
+                  : msg
+              )
+            );
+          }
         })
         .catch((err) => {
           console.error("Error storing chat in MongoDB:", err);
@@ -676,32 +802,90 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                       </Avatar>
                       <Box>
                         <Box sx={{ color: "#52946B", fontWeight: 500, fontSize: 16, mb: 1 }}>{persona.name}</Box>
-                        <Box sx={{ bgcolor: "#F0F5F2", color: "#4e5357", px: { xs: 2.5, sm: 2 }, py: { xs: 2, sm: 2.5 }, borderRadius: 3, fontSize: 16, fontWeight: 400, maxWidth: { xs: "100%", sm: 600 }, wordBreak: "break-word", boxShadow: "none", lineHeight: 1.5, textAlign: "left", whiteSpace: "pre-wrap" }}>
-                          {msg.isTyping ? (
+                        {msg.isTyping ? (
+                          <Box sx={{ bgcolor: "#F0F5F2", color: "#4e5357", px: { xs: 2.5, sm: 2 }, py: { xs: 2, sm: 2.5 }, borderRadius: 3, fontSize: 16, fontWeight: 400, maxWidth: { xs: "100%", sm: 600 }, wordBreak: "break-word", boxShadow: "none", lineHeight: 1.5, textAlign: "left", whiteSpace: "pre-wrap" }}>
                             <TypingIndicator />
-                          ) : (
-                            <>
-                              {msg.fileUrl && (
-                                msg.fileType && msg.fileType.startsWith('image/') ? (
-                                  <img src={msg.fileUrl} alt="attachment" style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, marginBottom: msg.text ? 8 : 0 }} />
+                          </Box>
+                        ) : (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, maxWidth: { xs: "100%", sm: 600 } }}>
+                            {msg.fileUrl && (
+                              <Box sx={{ bgcolor: "#F0F5F2", borderRadius: 3, p: 1, boxShadow: "none" }}>
+                                {msg.fileType && msg.fileType.startsWith('image/') ? (
+                                  <img 
+                                    src={msg.fileUrl} 
+                                    alt="attachment" 
+                                    style={{ 
+                                      maxWidth: 250, 
+                                      maxHeight: 250, 
+                                      borderRadius: 8,
+                                      display: 'block',
+                                      width: '100%',
+                                      height: 'auto'
+                                    }} 
+                                  />
                                 ) : (
-                                  <Box sx={{ mb: msg.text ? 1 : 0 }}>
-                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#4e5357', textDecoration: 'underline' }}>
-                                      {msg.fileUrl.split('/').pop()}
-                                    </a>
-                                  </Box>
-                                )
-                              )}
-                              {msg.text && (
-                                msg.text.match(/(\n\s*[-*]|^\d+\.|^#)/m) ? (
+                        <Box
+                          sx={{
+                                      width: 20, 
+                                      height: 20, 
+                                      bgcolor: '#4e5357', 
+                                      borderRadius: 1,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer'
+                                    }}
+                                    onClick={() => window.open(msg.fileUrl, '_blank')}
+                                  >
+                                    <Box sx={{ 
+                                      width: 12, 
+                                      height: 12, 
+                                      bgcolor: '#fff', 
+                                      borderRadius: 0.5 
+                                    }} />
+                        </Box>
+                                )}
+                              </Box>
+                            )}
+                            {msg.text && (
+                              <>
+                              <Box sx={{ 
+                            bgcolor: "#F0F5F2",
+                            color: "#4e5357",
+                            px: { xs: 2.5, sm: 2 },
+                            py: { xs: 2, sm: 2.5 },
+                            borderRadius: 3,
+                            fontSize: 16,
+                            fontWeight: 400,
+                            wordBreak: "break-word",
+                            boxShadow: "none",
+                            lineHeight: 1.5,
+                            textAlign: "left",
+                            whiteSpace: "pre-wrap",
+                                maxWidth: '100%'
+                              }}>
+                                {msg.text.match(/(\n\s*[-*]|^\d+\.|^#)/m) ? (
                             <FormattedOutput content={msg.text} />
                           ) : (
-                                  <Box component="span">{msg.text}</Box>
-                                )
-                              )}
-                            </>
+                            msg.text
                           )}
                         </Box>
+                              <IconButton
+                                size="small"
+                                aria-label="Copy AI response"
+                                sx={{ mt: 0.5, alignSelf: 'flex-start', color: '#4e5357' }}
+                                onClick={() => {
+                                  if (msg.text) {
+                                    navigator.clipboard.writeText(msg.text);
+                                  }
+                                }}
+                              >
+                                <ContentCopyIcon fontSize="small" />
+                              </IconButton>
+                              </>
+                            )}
+                          </Box>
+                        )}
                       </Box>
                     </Box>
                   </Box>
@@ -715,20 +899,131 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                           <span style={{ width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 500, color: "#fff" }}>U</span>
                         )}
                       </Avatar>
-                      <Box sx={{ bgcolor: "#00875A", color: "#fff", px: { xs: 2.5, sm: 3 }, py: { xs: 2, sm: 2.5 }, borderRadius: 3, fontSize: 16, fontWeight: 400, maxWidth: { xs: "100%", sm: 400 }, wordBreak: "break-word", boxShadow: "0 2px 8px rgba(44,62,80,0.04)", lineHeight: 1.5, textAlign: "start", whiteSpace: "pre-wrap" }}>
-                        {msg.fileUrl && (
-                          msg.fileType && msg.fileType.startsWith('image/') ? (
-                            <img src={msg.fileUrl} alt="attachment" style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, marginBottom: msg.text ? 8 : 0 }} />
-                          ) : (
-                            <Box sx={{ mb: msg.text ? 1 : 0 }}>
-                              <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'underline' }}>
-                                {msg.fileUrl.split('/').pop()}
-                              </a>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, maxWidth: { xs: "100%", sm: 400 } }}>
+                                                  {msg.fileUrl && (
+                            <Box sx={{ bgcolor: "#00875A", borderRadius: 3, p: 1, boxShadow: "0 2px 8px rgba(44,62,80,0.04)" }}>
+                              {msg.fileType && msg.fileType.startsWith('image/') ? (
+                                <img 
+                                  src={msg.fileUrl} 
+                                  alt="attachment" 
+                            style={{
+                                    maxWidth: 250, 
+                                    maxHeight: 250, 
+                                    borderRadius: 8,
+                                    display: 'block',
+                                    width: '100%',
+                                    height: 'auto'
+                            }}
+                          />
+                        ) : (
+                                <Box 
+                                  sx={{ 
+                                    width: 20, 
+                                    height: 20, 
+                                    bgcolor: '#fff', 
+                                    borderRadius: 1,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer'
+                                  }}
+                                  onClick={() => window.open(msg.fileUrl, '_blank')}
+                                >
+                                  <Box sx={{ 
+                                    width: 12, 
+                                    height: 12, 
+                                    bgcolor: '#00875A', 
+                                    borderRadius: 0.5 
+                                  }} />
+                                </Box>
+                              )}
                             </Box>
-                          )
-                        )}
+                          )}
                         {msg.text && (
-                          <Box component="span">{msg.text}</Box>
+                          <Box sx={{ 
+                          bgcolor: "#00875A",
+                          color: "#fff",
+                          px: { xs: 2.5, sm: 3 },
+                          py: { xs: 2, sm: 2.5 },
+                          borderRadius: 3,
+                          fontSize: 16,
+                          fontWeight: 400,
+                          wordBreak: "break-word",
+                          boxShadow: "0 2px 8px rgba(44,62,80,0.04)",
+                          lineHeight: 1.5,
+                          textAlign: "start",
+                          whiteSpace: "pre-wrap",
+                            maxWidth: '100%',
+                            position: 'relative',
+                            '&:hover .edit-button': {
+                              opacity: 1
+                            }
+                          }}>
+                            {editingMessageId === msg.id ? (
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                <TextField
+                                  value={editingText}
+                                  onChange={(e) => setEditingText(e.target.value)}
+                                  multiline
+                                  fullWidth
+                                  variant="outlined"
+                                  sx={{
+                                    '& .MuiOutlinedInput-root': {
+                                      color: '#fff',
+                                      '& fieldset': {
+                                        borderColor: 'rgba(255,255,255,0.3)',
+                                      },
+                                      '&:hover fieldset': {
+                                        borderColor: 'rgba(255,255,255,0.5)',
+                                      },
+                                      '&.Mui-focused fieldset': {
+                                        borderColor: '#fff',
+                                      },
+                                    },
+                                  }}
+                                />
+                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleSaveEdit(msg.id!)}
+                                    sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' }}
+                                  >
+                                    <CheckIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={handleCancelEdit}
+                                    sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' }}
+                                  >
+                                    <CloseIcon fontSize="small" />
+                                  </IconButton>
+                                </Box>
+                              </Box>
+                            ) : (
+                              <>
+                        {msg.text}
+                                <IconButton
+                                  className="edit-button"
+                                  size="small"
+                                  onClick={() => handleEditMessage(msg.id!, msg.text)}
+                                  sx={{
+                                    position: 'absolute',
+                                    top: 4,
+                                    right: 4,
+                                    color: '#fff',
+                                    bgcolor: 'rgba(255,255,255,0.1)',
+                                    opacity: 0,
+                                    transition: 'opacity 0.2s',
+                                    '&:hover': {
+                                      bgcolor: 'rgba(255,255,255,0.2)',
+                                    }
+                                  }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </>
+                            )}
+                          </Box>
                         )}
                       </Box>
                     </Box>

@@ -8,6 +8,8 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { ThemeProvider, createTheme, CssBaseline } from "@mui/material";
+import GlobalLoader from "./components/GlobalLoader";
+import { usePageLoader } from "./hooks/usePageLoader";
 import Discovery from "./pages/Discovery";
 import ChatPage from "./pages/ChatPage";
 import type { Persona } from "./types";
@@ -96,12 +98,14 @@ const ChatPageWithNav: React.FC = () => {
   return <ChatPage onBack={() => navigate("/")} />;
 };
 
-function App() {
+// Main app content with loader
+const AppContent: React.FC = () => {
+  const { isLoading } = usePageLoader();
+  
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <BrowserRouter>
-        <Routes>
+    <>
+      <GlobalLoader open={isLoading} message="Loading page..." />
+      <Routes>
           <Route
             path="/"
             element={
@@ -133,6 +137,16 @@ function App() {
           <Route path="/login" element={<AuthPage />} />
           <Route path="/register" element={<RegisterPage />} />
         </Routes>
+    </>
+  );
+};
+
+function App() {
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <BrowserRouter>
+        <AppContent />
       </BrowserRouter>
     </ThemeProvider>
   );

@@ -64,6 +64,14 @@ const Header: React.FC = () => {
 
   // Detect if we are on the Discover page
   const isDiscoverPage = location.pathname === "/";
+  // State for navbar search
+  const [searchValue, setSearchValue] = React.useState("");
+  // Handle search submit
+  const handleSearchSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && searchValue.trim()) {
+      navigate(`/?search=${encodeURIComponent(searchValue.trim())}`);
+    }
+  };
 
   return (
     <AppBar
@@ -183,6 +191,9 @@ const Header: React.FC = () => {
                 placeholder="Search"
                 variant="outlined"
                 size="small"
+                value={searchValue}
+                onChange={e => setSearchValue(e.target.value)}
+                onKeyDown={handleSearchSubmit}
                 sx={{
                   width: 200,
                   mr: 2,

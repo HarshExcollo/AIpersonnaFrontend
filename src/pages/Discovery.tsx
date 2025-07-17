@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Container, Box, Typography } from "@mui/material";
-import { useNavigate } from "react-router-dom";
 import Header from "../components/discover/Header";
 import SearchBar from "../components/discover/SearchBar";
 import FilterChips from "../components/discover/FilterChips";
@@ -20,7 +20,11 @@ const DEPARTMENT_ORDER = ["Tech", "Marketing", "Sales"];
 
 const Discovery: React.FC<DiscoveryProps> = ({ onStartChat }) => {
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState("");
+  const location = useLocation();
+  // Read 'search' query param from URL
+  const params = new URLSearchParams(location.search);
+  const initialSearch = params.get('search') || "";
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
 
   // Initialize filters with all set to inactive (false) so "All" appears selected
   const [filters, setFilters] = useState<FilterOption[]>(
@@ -104,6 +108,14 @@ const Discovery: React.FC<DiscoveryProps> = ({ onStartChat }) => {
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
     setCurrentPage(1);
+    // Update the query param in the URL
+    const params = new URLSearchParams(location.search);
+    if (value) {
+      params.set('search', value);
+    } else {
+      params.delete('search');
+    }
+    navigate({ search: params.toString() }, { replace: true });
   };
 
   const handlePageChange = (page: number) => {
