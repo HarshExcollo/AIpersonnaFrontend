@@ -56,7 +56,7 @@ const Discovery: React.FC<DiscoveryProps> = ({ onStartChat }) => {
     .filter((persona) => {
       // Filter by search term
       const matchesSearch = searchTerm === "" || 
-        persona.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          persona.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         persona.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
         persona.department.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -67,10 +67,10 @@ const Discovery: React.FC<DiscoveryProps> = ({ onStartChat }) => {
       return matchesSearch && matchesDepartment;
     })
     .sort((a, b) => {
-      // Sort by department order, then by name
+    // Sort by department order, then by name
       const aDeptIndex = DEPARTMENT_ORDER.indexOf(a.department);
       const bDeptIndex = DEPARTMENT_ORDER.indexOf(b.department);
-      
+
       if (aDeptIndex !== bDeptIndex) {
         return aDeptIndex - bDeptIndex;
       }

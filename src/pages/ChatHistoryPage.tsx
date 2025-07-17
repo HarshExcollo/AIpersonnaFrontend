@@ -15,6 +15,7 @@ interface ChatMessage {
   ai_response: string;
   timestamp: string;
   session_id?: string;
+  archived?: boolean;
 }
 
 interface SessionChat {
@@ -23,6 +24,8 @@ interface SessionChat {
   last_message: string;
   date: string;
   chats: ChatMessage[];
+  archived?: boolean;
+  lastTimestamp: string;
 }
 
 const ChatHistoryPage: React.FC = () => {
@@ -64,6 +67,72 @@ const ChatHistoryPage: React.FC = () => {
     }
   };
 
+  // Function to handle archiving a session
+  const handleArchiveSession = async (session: SessionChat) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/chats/archive`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          session_id: session.session_id
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        console.log(`Archived session ${session.session_id}`);
+        // Refresh the sessions list
+        setSessions(prev => prev.filter(s => s.session_id !== session.session_id));
+      } else {
+        console.error('Failed to archive session:', data.message);
+      }
+    } catch (error) {
+      console.error('Error archiving session:', error);
+    }
+  };
+
+  // Function to handle unarchiving a session
+  const handleUnarchiveSession = async (session: SessionChat) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/chats/unarchive`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          session_id: session.session_id
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        console.log(`Unarchived session ${session.session_id}`);
+        // Refresh the sessions list
+        setSessions(prev => prev.filter(s => s.session_id !== session.session_id));
+      } else {
+        console.error('Failed to unarchive session:', data.message);
+      }
+    } catch (error) {
+      console.error('Error unarchiving session:', error);
+    }
+  };
+
   useEffect(() => {
     // Get user from localStorage
     let userId = "";
@@ -82,7 +151,7 @@ const ChatHistoryPage: React.FC = () => {
     }
 
     const token = localStorage.getItem("token");
-    const fetchUrl = `${import.meta.env.VITE_BACKEND_URL}/api/personas/chats?user=${userId}&persona=all`;
+    const fetchUrl = `${import.meta.env.VITE_BACKEND_URL}/api/personas/chats?user=${userId}&persona=all&archived=${tab === "archived"}`;
     console.log("Fetch URL:", fetchUrl);
 
     // Fetch all chats for the user
@@ -127,6 +196,8 @@ const ChatHistoryPage: React.FC = () => {
           // For each session, get the latest message (user or ai)
           const sessionChats: SessionChat[] = sessionEntries.map(
             ([session_id, chats]) => {
+              // Sort chats within session by timestamp to ensure correct order
+              chats.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
               const lastChat = chats[chats.length - 1];
               return {
                 session_id,
@@ -134,9 +205,14 @@ const ChatHistoryPage: React.FC = () => {
                 last_message: lastChat.ai_response || lastChat.user_message,
                 date: new Date(lastChat.timestamp).toLocaleDateString(),
                 chats,
+                archived: chats.some(chat => chat.archived) || tab === "archived",
+                lastTimestamp: lastChat.timestamp // Add this for sorting sessions
               };
             }
           );
+
+          // Sort sessions by their last message timestamp (latest first)
+          sessionChats.sort((a, b) => new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime());
           console.log("Sessions created:", sessionChats.length);
           console.log(
             "All sessions:",
@@ -144,6 +220,7 @@ const ChatHistoryPage: React.FC = () => {
               session_id: s.session_id,
               persona: s.persona,
               count: s.chats.length,
+              archived: s.archived
             }))
           );
           setSessions(sessionChats);
@@ -154,7 +231,7 @@ const ChatHistoryPage: React.FC = () => {
       .catch((err) => {
         console.error("Failed to fetch chat history:", err);
       });
-  }, []);
+  }, [tab]);
 
   // Filter sessions by search
   const filteredSessions = sessions.filter(
@@ -172,6 +249,7 @@ const ChatHistoryPage: React.FC = () => {
       name: persona?.name || `Persona: ${session.persona}`,
       message: session.last_message,
       date: session.date,
+      archived: session.archived,
       onClick: () => {
         console.log("Session clicked:", session);
         // Open the chat directly
@@ -182,6 +260,8 @@ const ChatHistoryPage: React.FC = () => {
         setSelectedSession(session);
         setModalOpen(true);
       },
+      onArchive: () => handleArchiveSession(session),
+      onUnarchive: () => handleUnarchiveSession(session),
       key: session.session_id + "-" + idx,
     };
   });

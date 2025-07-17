@@ -3,16 +3,11 @@ import {
   Box,
   Avatar,
   Typography,
-  IconButton,
-  Chip,
-  InputBase,
-  Paper,
   ClickAwayListener,
   useTheme,
   useMediaQuery,
 } from "@mui/material";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import { IoSend } from "react-icons/io5";
 import type { Persona } from "../types";
 import ChatHeader from "../components/ChatHeader";
 import Sidebar from "../components/sidebar/Sidebar";
@@ -20,6 +15,8 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { sendToWebhook, isWebhookPersona } from "../services/webhookService";
 import FormattedOutput from "../components/FormattedOutput";
 import { getSessionId, startNewSession } from "../utils/session";
+import ChatInputBar from "../components/ChatInputBar";
+import ChatSearchModal from "../components/ChatSearchModal";
 
 interface ChatPageProps {
   onBack: () => void;
@@ -104,13 +101,15 @@ export default function ChatPage({ onBack }: ChatPageProps) {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [messages, setMessages] = useState<
-    { sender: "user" | "ai"; text: string; isTyping?: boolean }[]
+    { sender: "user" | "ai"; text: string; fileUrl?: string; fileType?: string; isTyping?: boolean }[]
   >([]);
   const [messageInput, setMessageInput] = useState("");
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const messageListRef = useRef<HTMLDivElement>(null);
   const [userAvatar, setUserAvatar] = useState("");
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [allSessions, setAllSessions] = useState([]); // [{ session_id, messages, date }]
   useEffect(() => {
     try {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -164,8 +163,8 @@ export default function ChatPage({ onBack }: ChatPageProps) {
         const data = await response.json();
         if (data.success && Array.isArray(data.chats)) {
           // Convert chat data to message format
-          const loadedMessages = data.chats.flatMap((chat: { user_message: string; ai_response: string }) => [
-            { sender: "user" as const, text: chat.user_message },
+          const loadedMessages = data.chats.flatMap((chat: { user_message: string; ai_response: string; fileUrl?: string; fileType?: string }) => [
+            { sender: "user" as const, text: chat.user_message, fileUrl: chat.fileUrl, fileType: chat.fileType },
             { sender: "ai" as const, text: chat.ai_response },
           ]);
 
@@ -258,6 +257,74 @@ export default function ChatPage({ onBack }: ChatPageProps) {
     return () => clearTimeout(timeoutId);
   }, [messages]);
 
+  // Keyboard shortcut for Ctrl+K / Cmd+K
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchModalOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // Scroll to message by index
+  const scrollToMessage = (idx: number) => {
+    if (!messageListRef.current) return;
+    const messageNodes = messageListRef.current.querySelectorAll('[data-msg-idx]');
+    const node = Array.from(messageNodes).find((el) => Number((el as HTMLElement).dataset.msgIdx) === idx);
+    if (node) {
+      (node as HTMLElement).scrollIntoView({ behavior: "smooth", block: "center" });
+      (node as HTMLElement).style.background = "#fffde7";
+      setTimeout(() => {
+        (node as HTMLElement).style.background = "";
+      }, 1200);
+    }
+  };
+
+  // Fetch all sessions for persona when search modal opens
+  useEffect(() => {
+    const fetchAllSessions = async () => {
+      if (!searchModalOpen || !persona) return;
+      // User ID is handled in the API call below
+      const token = localStorage.getItem("token");
+      const url = `${import.meta.env.VITE_BACKEND_URL}/api/personas/chats/all?persona=${persona.id}`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      console.log("[ChatPage] /api/personas/chats/all response:", data);
+      if (data.success && Array.isArray(data.sessions)) {
+        setAllSessions(data.sessions);
+        console.log("[ChatPage] allSessions:", data.sessions);
+      } else {
+        setAllSessions([]);
+        console.log("[ChatPage] allSessions: [] (no data)");
+      }
+    };
+    fetchAllSessions();
+  }, [searchModalOpen, persona]);
+
+  // Handler for selecting a search result
+  const handleSearchSelect = ({ session_id, msgIdx }: { session_id: string; msgIdx: number }) => {
+    // If session_id is current, scroll to message
+    if (session_id === currentSessionId) {
+      scrollToMessage(msgIdx);
+    } else {
+      // Navigate to the session (reload page with session param)
+      navigate(`/chat/${persona?.id}?session=${session_id}#msg${msgIdx}`);
+      // Optionally, you can scroll after navigation
+    }
+    setSearchModalOpen(false);
+  };
+  // Handler for starting a new chat
+  const handleStartNewChat = () => {
+    // Start a new session (navigate to chat page without session param)
+    navigate(`/chat/${persona?.id}`);
+    setSearchModalOpen(false);
+  };
+
   if (!persona) {
     return <div>Persona not found</div>;
   }
@@ -266,7 +333,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
   const handleMenuClick = () => setSidebarOpen(true);
   // Handler to close sidebar
   const handleSidebarClose = () => setSidebarOpen(false);
-  const SIDEBAR_WIDTH = isMobile ? 280 : 160;
+  const SIDEBAR_WIDTH = isMobile ? 320 : 280;
 
   // Handler to close persona switcher
   const handleSwitcherClose = () => {
@@ -279,13 +346,18 @@ export default function ChatPage({ onBack }: ChatPageProps) {
   };
 
   // Updated handleSendMessage with session ID logic and chat persistence
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = messageInput.trim();
-    if (!trimmed) return;
+  const handleSendMessage = async (msgObj: { message: string; fileUrl?: string; fileType?: string }) => {
+    // msgObj: { message, fileUrl, fileType }
+    const trimmed = (msgObj.message || "").trim();
+    const fileUrl = msgObj.fileUrl;
+    const fileType = msgObj.fileType;
+    if (!trimmed && !fileUrl) return;
 
     // Add user message
-    setMessages((prev) => [...prev, { sender: "user", text: trimmed }]);
+    setMessages((prev) => [
+      ...prev,
+      { sender: "user", text: trimmed, fileUrl, fileType },
+    ]);
     setMessageInput("");
 
     // Use existing session ID if available, otherwise start new session if this is the first message
@@ -311,116 +383,43 @@ export default function ChatPage({ onBack }: ChatPageProps) {
     const personaId = String(persona.id);
     const personaName = persona.name;
 
-    // Check if this persona uses webhook
-    if (isWebhookPersona(personaId)) {
-      try {
-        // Add a typing indicator
+    // Add typing indicator for AI
         setMessages((prev) => [
           ...prev,
           { sender: "ai", text: "", isTyping: true },
         ]);
 
-        // Get AI response from webhook
-        const webhookResponse = await sendToWebhook(
-          trimmed,
-          personaId,
-          personaName
-        );
-
-        // Store both user message and AI response in MongoDB
-        const token = localStorage.getItem("token");
-        const storePromise = fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/chats`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({
-            user: userId,
-            persona: personaId,
-            session_id: sessionId,
-            user_message: String(trimmed),
-            ai_response: webhookResponse,
-          }),
-        })
-          .then((res) => {
-            if (!res.ok) {
-              return res.text().then((text) => {
-                throw new Error("Failed to store chat: " + text);
-              });
-            }
-            return res.json();
-          })
-          .catch((err) => {
-            console.error("Error storing chat in MongoDB:", err);
-          });
-
-        // Wait for chat to be stored
-        await storePromise;
-
-        // Replace the typing indicator with the actual response
-        setMessages((prev) => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = {
-            sender: "ai",
-            text: webhookResponse,
-            isTyping: false,
-          };
-          return newMessages;
-        });
-
-        // Force scroll to bottom after AI response
-        setTimeout(() => {
-          if (messageListRef.current) {
-            messageListRef.current.scrollTo({
-              top: messageListRef.current.scrollHeight,
-              behavior: "smooth",
-            });
-          }
-        }, 200);
-      } catch (error) {
-        console.error("Error processing webhook:", error);
-        // Replace typing indicator with error message
-        setMessages((prev) => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = {
-            sender: "ai",
-            text: "I'm experiencing technical difficulties. Please try again or contact support.",
-            isTyping: false,
-          };
-          return newMessages;
-        });
+    // Get AI response (webhook or default)
+    let aiResponse = "This is a sample response from your AI Persona.";
+    if (isWebhookPersona(personaId)) {
+      try {
+        aiResponse = await sendToWebhook(trimmed, personaId, personaName, fileUrl, fileType);
+      } catch {
+        aiResponse = "Sorry, there was an error contacting the AI service.";
       }
-    } else {
-      // For other personas, add typing indicator first
-      setMessages((prev) => [
-        ...prev,
-        { sender: "ai", text: "", isTyping: true },
-      ]);
-
-      const aiResponse = "This is a sample response from your AI Persona.";
+    }
 
       // Store both user message and AI response in MongoDB
-      const token = localStorage.getItem("token");
-      const storePromise = fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/chats`, {
+    const token = localStorage.getItem("token");
+    const storePromise = fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/chats`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
         body: JSON.stringify({
           user: userId,
           persona: personaId,
           session_id: sessionId,
           user_message: String(trimmed),
           ai_response: aiResponse,
+        fileUrl,
+        fileType,
         }),
       })
         .then((res) => {
           if (!res.ok) {
-            return res.text().then((text) => {
-              throw new Error("Failed to store chat: " + text);
-            });
+          throw new Error("Failed to store chat");
           }
           return res.json();
         })
@@ -442,7 +441,6 @@ export default function ChatPage({ onBack }: ChatPageProps) {
 
       // Wait for chat to be stored
       await storePromise;
-    }
   };
 
   // Check if user has sent first message
@@ -606,17 +604,17 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                 </Typography>
 
                 {/* Role */}
-                <Typography
-                  variant="subtitle1"
-                  sx={{
-                    color: "#2e7d32",
-                    fontWeight: 400,
-                    fontSize: { xs: 16, sm: 18 },
-                    textAlign: "center",
-                  }}
-                >
-                  {persona.role}
-                </Typography>
+                  <Typography
+                    variant="subtitle1"
+                    sx={{
+                      color: "#2e7d32",
+                      fontWeight: 400,
+                      fontSize: { xs: 16, sm: 18 },
+                      textAlign: "center",
+                    }}
+                  >
+                    {persona.role}
+                  </Typography>
 
                 {/* Department */}
                 {persona.department && (
@@ -638,7 +636,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                 {persona.description && (
                   <Typography
                     variant="body2"
-                    sx={{
+                      sx={{
                       color: "#888",
                       fontWeight: 400,
                       fontSize: { xs: 13, sm: 15 },
@@ -654,148 +652,67 @@ export default function ChatPage({ onBack }: ChatPageProps) {
               {/* Messages */}
               {messages.map((msg, idx) =>
                 msg.sender === "ai" ? (
-                  <Box
-                    key={idx}
-                    sx={{
-                      width: "100%",
-                      display: "flex",
-                      justifyContent: "flex-start",
-                      mb: 2,
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "row",
-                        alignItems: "flex-end",
-                        gap: 2,
-                      }}
-                    >
+                  <Box key={idx} data-msg-idx={idx} sx={{ width: "100%", display: "flex", justifyContent: "flex-start", mb: 2 }}>
+                    <Box sx={{ display: "flex", flexDirection: "row", alignItems: "flex-end", gap: 2 }}>
                       <Avatar sx={{ width: 42, height: 42, mb: 0.5 }}>
-                        <img
-                          src={persona.avatar}
-                          alt="AI"
-                          style={{ width: 48, height: 48, borderRadius: "50%" }}
-                          onError={(e) => {
-                            console.error("AI message avatar failed to load:", persona.avatar);
-                            console.error("Error event:", e);
-                          }}
-                          onLoad={() => {
-                            console.log("AI message avatar loaded successfully:", persona.avatar);
-                          }}
-                        />
+                        <img src={persona.avatar} alt="AI" style={{ width: 48, height: 48, borderRadius: "50%" }} />
                       </Avatar>
                       <Box>
-                        <Box
-                          sx={{
-                            color: "#52946B",
-                            fontWeight: 500,
-                            fontSize: 16,
-                            mb: 1,
-                            fontFamily:
-                              "Inter, Roboto, Helvetica, Arial, sans-serif",
-                          }}
-                        >
-                          {persona.name}
-                        </Box>
-                        <Box
-                          sx={{
-                            bgcolor: "#F0F5F2",
-                            color: "#4e5357",
-                            px: { xs: 2.5, sm: 2 },
-                            py: { xs: 2, sm: 2.5 },
-                            borderRadius: 3,
-                            fontSize: 16,
-                            fontWeight: 400,
-                            maxWidth: { xs: "100%", sm: 600 },
-                            wordBreak: "break-word",
-                            boxShadow: "none",
-                            lineHeight: 1.5,
-                            fontFamily:
-                              "Inter, Roboto, Helvetica, Arial, sans-serif",
-                            textAlign: "left",
-                            whiteSpace: "pre-wrap",
-                          }}
-                        >
+                        <Box sx={{ color: "#52946B", fontWeight: 500, fontSize: 16, mb: 1 }}>{persona.name}</Box>
+                        <Box sx={{ bgcolor: "#F0F5F2", color: "#4e5357", px: { xs: 2.5, sm: 2 }, py: { xs: 2, sm: 2.5 }, borderRadius: 3, fontSize: 16, fontWeight: 400, maxWidth: { xs: "100%", sm: 600 }, wordBreak: "break-word", boxShadow: "none", lineHeight: 1.5, textAlign: "left", whiteSpace: "pre-wrap" }}>
                           {msg.isTyping ? (
                             <TypingIndicator />
-                          ) : msg.text.match(/(\n\s*[-*]|^\d+\.|^#)/m) ? (
-                            <FormattedOutput content={msg.text} />
                           ) : (
-                            msg.text
+                            <>
+                              {msg.fileUrl && (
+                                msg.fileType && msg.fileType.startsWith('image/') ? (
+                                  <img src={msg.fileUrl} alt="attachment" style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, marginBottom: msg.text ? 8 : 0 }} />
+                                ) : (
+                                  <Box sx={{ mb: msg.text ? 1 : 0 }}>
+                                    <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#4e5357', textDecoration: 'underline' }}>
+                                      {msg.fileUrl.split('/').pop()}
+                                    </a>
+                                  </Box>
+                                )
+                              )}
+                              {msg.text && (
+                                msg.text.match(/(\n\s*[-*]|^\d+\.|^#)/m) ? (
+                                  <FormattedOutput content={msg.text} />
+                                ) : (
+                                  <Box component="span">{msg.text}</Box>
+                                )
+                              )}
+                            </>
                           )}
                         </Box>
                       </Box>
                     </Box>
                   </Box>
                 ) : (
-                  <Box
-                    key={idx}
-                    sx={{
-                      width: "100%",
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      mb: 2,
-                      mr: { xs: 0, sm: 4 },
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: "flex",
-                        flexDirection: "row-reverse",
-                        alignItems: "flex-end",
-                        gap: 2,
-                      }}
-                    >
+                  <Box key={idx} data-msg-idx={idx} sx={{ width: "100%", display: "flex", justifyContent: "flex-end", mb: 2, mr: { xs: 0, sm: 4 } }}>
+                    <Box sx={{ display: "flex", flexDirection: "row-reverse", alignItems: "flex-end", gap: 2 }}>
                       <Avatar sx={{ width: 42, height: 42, mb: 0.5 }}>
                         {userAvatar ? (
-                          <img
-                            src={userAvatar}
-                            alt="User"
-                            style={{
-                              width: 48,
-                              height: 48,
-                              borderRadius: "50%",
-                            }}
-                          />
+                          <img src={userAvatar} alt="User" style={{ width: 48, height: 48, borderRadius: "50%" }} />
                         ) : (
-                          <span
-                            style={{
-                              width: 48,
-                              height: 48,
-                              borderRadius: "50%",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: 18,
-                              fontWeight: 500,
-                              color: "#fff",
-                            }}
-                          >
-                            U
-                          </span>
+                          <span style={{ width: 48, height: 48, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 500, color: "#fff" }}>U</span>
                         )}
                       </Avatar>
-                      <Box
-                        sx={{
-                          bgcolor: "#00875A",
-                          color: "#fff",
-                          px: { xs: 2.5, sm: 3 },
-                          py: { xs: 2, sm: 2.5 },
-                          borderRadius: 3,
-                          fontSize: 16,
-                          fontWeight: 400,
-                          maxWidth: { xs: "100%", sm: 400 },
-                          wordBreak: "break-word",
-                          boxShadow: "0 2px 8px rgba(44,62,80,0.04)",
-                          lineHeight: 1.5,
-                          fontFamily:
-                            "Inter, Roboto, Helvetica, Arial, sans-serif",
-                          textAlign: "start",
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        {msg.text}
+                      <Box sx={{ bgcolor: "#00875A", color: "#fff", px: { xs: 2.5, sm: 3 }, py: { xs: 2, sm: 2.5 }, borderRadius: 3, fontSize: 16, fontWeight: 400, maxWidth: { xs: "100%", sm: 400 }, wordBreak: "break-word", boxShadow: "0 2px 8px rgba(44,62,80,0.04)", lineHeight: 1.5, textAlign: "start", whiteSpace: "pre-wrap" }}>
+                        {msg.fileUrl && (
+                          msg.fileType && msg.fileType.startsWith('image/') ? (
+                            <img src={msg.fileUrl} alt="attachment" style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, marginBottom: msg.text ? 8 : 0 }} />
+                          ) : (
+                            <Box sx={{ mb: msg.text ? 1 : 0 }}>
+                              <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'underline' }}>
+                                {msg.fileUrl.split('/').pop()}
+                              </a>
+                            </Box>
+                          )
+                        )}
+                        {msg.text && (
+                          <Box component="span">{msg.text}</Box>
+                        )}
                       </Box>
                     </Box>
                   </Box>
@@ -854,140 +771,31 @@ export default function ChatPage({ onBack }: ChatPageProps) {
             }}
           >
             {/* Suggestion Chips - Hide after user sends first message */}
-            {!hasUserMessages && (
-              <Box
-                sx={{
-                  display: "flex",
-                  gap: { xs: 1, sm: 2 },
-                  maxWidth: sidebarOpen
-                    ? { xs: "100%", sm: `calc(1120px - ${SIDEBAR_WIDTH}px)` }
-                    : { xs: "100%", sm: 960 },
-                  width: "100%",
-                  px: { xs: 2, sm: 3 },
-                  mb: 0,
-                  mt: 0,
-                  flexWrap: "wrap",
-                  justifyContent: "flex-start",
-                }}
-              >
-                {suggestionChips.map((label, idx) => (
-                  <Chip
-                    key={idx}
-                    label={label}
-                    onClick={() => {
-                      setMessageInput(label);
-                      // Auto-send the message after setting it
-                      setTimeout(() => handleSendMessage(), 100);
-                    }}
-                    sx={{
-                      bgcolor: "#e8f5e8",
-                      fontWeight: 500,
-                      fontSize: { xs: 13, sm: 15 },
-                      height: { xs: 32, sm: 36 },
-                      mb: { xs: 1, sm: 0 },
-                      cursor: "pointer",
-                      "&:hover": {
-                        bgcolor: "#d4edd4",
-                      },
-                    }}
-                  />
-                ))}
-              </Box>
-            )}
+            {/* Removed suggestion chips rendering from ChatPage */}
 
-            {/* Chat Input */}
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                maxWidth: sidebarOpen
-                  ? { xs: "100%", sm: `calc(1120px - ${SIDEBAR_WIDTH}px)` }
-                  : { xs: "100%", sm: 960 },
-                width: "100%",
-                px: { xs: 2, sm: 3 },
-                mt: { xs: 2, sm: 3 },
-              }}
-            >
-              {/* Single integrated chat input bar */}
-              <Paper
-                component="form"
-                onSubmit={handleSendMessage}
-                sx={{
-                  display: "flex",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  width: "100%",
-                  borderRadius: "24px",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                  bgcolor: "#e8f5e8",
-                  p: { xs: 1.5, sm: 2 },
-                  border: "1px solid #d0d7de",
-                  minHeight: { xs: 60, sm: 70 },
-                }}
-                elevation={0}
-              >
-                {/* Main input field - takes up most space */}
-                <InputBase
-                  sx={{
-                    flex: 1,
-                    fontSize: { xs: 14, sm: 16 },
-                    mr: 2,
-                    "& input": {
-                      fontSize: { xs: 14, sm: 16 },
-                      py: 0.5,
-                    },
-                    "& textarea": {
-                      fontSize: { xs: 14, sm: 16 },
-                      resize: "none",
-                      lineHeight: 1.4,
-                      py: 0.5,
-                    },
-                  }}
-                  placeholder="Send a message"
-                  inputProps={{ "aria-label": "send a message" }}
+            {/* Chat InputBar with file upload support */}
+            <ChatInputBar
                   value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  autoFocus
-                  multiline
-                  maxRows={4}
-                  minRows={1}
-                />
-
-                {/* Send button - aligned with text */}
-                <IconButton
-                  sx={{
-                    backgroundColor: messageInput.trim()
-                      ? "#00875A"
-                      : "#d1d5db",
-                    color: messageInput.trim() ? "white" : "#6b7280",
-                    width: { xs: 36, sm: 40 },
-                    height: { xs: 36, sm: 40 },
-                    borderRadius: "50%",
-                    transition: "all 0.2s ease",
-                    flexShrink: 0,
-                    "&:hover": {
-                      backgroundColor: messageInput.trim()
-                        ? "#1b5e20"
-                        : "#d1d5db",
-                      transform: messageInput.trim() ? "scale(1.05)" : "none",
-                    },
-                  }}
-                  onClick={() => handleSendMessage()}
-                  disabled={!messageInput.trim()}
-                >
-                  <IoSend size={16} />
-                </IconButton>
-              </Paper>
+              onChange={setMessageInput}
+              onSend={handleSendMessage}
+              disabled={isLoading}
+              persona={persona}
+              sidebarOpen={sidebarOpen}
+              sidebarWidth={SIDEBAR_WIDTH}
+              maxWidth={960}
+              suggestions={suggestionChips}
+              showSuggestions={!hasUserMessages}
+            />
             </Box>
           </Box>
         </Box>
-      </Box>
+      <ChatSearchModal
+        open={searchModalOpen}
+        onClose={() => setSearchModalOpen(false)}
+        sessions={allSessions}
+        onSelect={handleSearchSelect}
+        onStartNewChat={handleStartNewChat}
+      />
     </Box>
   );
 }

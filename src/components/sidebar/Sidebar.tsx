@@ -19,21 +19,20 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import { useNavigate } from "react-router-dom";
 import type { Persona } from "../../types";
 
-const favoritePersonas = [
-  {
-    name: "David Lee",
-    avatar: "https://randomuser.me/api/portraits/men/32.jpg",
-  },
-  {
-    name: "Ethan Carter",
-    avatar: "https://randomuser.me/api/portraits/men/33.jpg",
-  },
-  {
-    name: "Emily Carter",
-    avatar: "https://randomuser.me/api/portraits/women/44.jpg",
-  },
-];
-const recentChats = ["Create User flow", "Design strategy", "Roadmap"];
+interface FavoritePersona {
+  id: string;
+  name: string;
+  avatar: string;
+  role?: string;
+}
+
+interface RecentChat {
+  session_id: string;
+  persona_id: string;
+  persona_name: string;
+  last_message: string;
+  updated_at: string;
+}
 
 const Sidebar: React.FC<{
   onClose?: () => void;
@@ -41,7 +40,12 @@ const Sidebar: React.FC<{
 }> = ({ onClose, currentPersonaId }) => {
   const navigate = useNavigate();
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [favoritePersonas, setFavoritePersonas] = useState<FavoritePersona[]>([]);
+  const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
+  const [loadingFavorites, setLoadingFavorites] = useState(false);
+  const [loadingRecents, setLoadingRecents] = useState(false);
 
+  // Fetch all personas
   useEffect(() => {
     fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas`)
       .then((res) => res.json())
@@ -49,8 +53,97 @@ const Sidebar: React.FC<{
         if (data.success && Array.isArray(data.data)) {
           setPersonas(data.data);
         }
+      })
+      .catch((error) => {
+        console.error("Error fetching personas:", error);
       });
   }, []);
+
+  // Fetch user's favorite personas
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      setLoadingFavorites(true);
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setLoadingFavorites(false);
+          return;
+        }
+
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/favorites`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        
+        if (data.success && Array.isArray(data.favorites)) {
+          // Map favorite persona IDs to actual persona data
+          const favoritePersonaData = data.favorites
+            .map((personaId: string) => {
+              const persona = personas.find(p => p.id === personaId);
+              return persona ? {
+                id: persona.id,
+                name: persona.name,
+                avatar: persona.avatar,
+                role: persona.role
+              } : null;
+            })
+            .filter(Boolean) as FavoritePersona[];
+          
+          setFavoritePersonas(favoritePersonaData);
+        }
+      } catch (error) {
+        console.error("Error fetching favorites:", error);
+      } finally {
+        setLoadingFavorites(false);
+      }
+    };
+
+    if (personas.length > 0) {
+      fetchFavorites();
+    }
+  }, [personas]);
+
+  // Fetch user's recent chats for current persona
+  useEffect(() => {
+    const fetchRecentChats = async () => {
+      if (!currentPersonaId) return;
+      
+      setLoadingRecents(true);
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          setLoadingRecents(false);
+          return;
+        }
+
+        let userId = "current_user";
+        try {
+          const user = JSON.parse(localStorage.getItem("user") || "{}");
+          userId = user.id || "current_user";
+        } catch (error) {
+          console.error("Error getting user ID:", error);
+        }
+
+        const res = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/api/personas/chats/recent?user=${userId}&persona=${currentPersonaId}&limit=5`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        const data = await res.json();
+        
+        if (data.success && Array.isArray(data.chats)) {
+          setRecentChats(data.chats);
+        }
+      } catch (error) {
+        console.error("Error fetching recent chats:", error);
+      } finally {
+        setLoadingRecents(false);
+      }
+    };
+
+    fetchRecentChats();
+  }, [currentPersonaId]);
 
   // Handler for New Chat button
   const handleNewChat = () => {
@@ -61,10 +154,30 @@ const Sidebar: React.FC<{
     }
   };
 
+  // Handler for favorite persona click
+  const handleFavoritePersonaClick = (personaId: string) => {
+    navigate(`/chat/${personaId}`);
+    if (onClose) onClose();
+  };
+
+  // Handler for recent chat click
+  const handleRecentChatClick = (chat: RecentChat) => {
+    navigate(`/chat/${chat.persona_id}?session=${chat.session_id}`);
+    if (onClose) onClose();
+  };
+
+  // Handler for search chats click
+  const handleSearchChats = () => {
+    // Trigger search modal in parent component
+    // For now, we'll just close the sidebar
+    if (onClose) onClose();
+    // You can emit an event or use a callback to open search modal
+  };
+
   return (
     <Box
       sx={{
-        width: { xs: 280, sm: 220 },
+        width: { xs: 320, sm: 280 },
         height: "100vh",
         bgcolor: "#fff",
         p: 0,
@@ -77,7 +190,7 @@ const Sidebar: React.FC<{
         position: "fixed",
         top: 0,
         left: 0,
-        zIndex: 1200, // Above main content, below header if needed
+        zIndex: 1200,
         mt: 0,
         pt: 0,
         // Hide scrollbar for all browsers
@@ -132,6 +245,7 @@ const Sidebar: React.FC<{
           Pine labs
         </Typography>
       </Box>
+
       {/* New Chat Button */}
       <Button
         variant="contained"
@@ -162,6 +276,7 @@ const Sidebar: React.FC<{
       >
         New chat
       </Button>
+
       {/* Menu Options */}
       <List
         sx={{
@@ -204,7 +319,11 @@ const Sidebar: React.FC<{
             }
           />
         </ListItem>
-        <ListItem button sx={{ px: 0, minWidth: 0 }}>
+        <ListItem 
+          button 
+          sx={{ px: 0, minWidth: 0 }}
+          onClick={handleSearchChats}
+        >
           <ListItemAvatar sx={{ minWidth: { xs: 40, sm: 32 } }}>
             <SearchIcon
               sx={{
@@ -232,6 +351,7 @@ const Sidebar: React.FC<{
           />
         </ListItem>
       </List>
+
       {/* Favorite Personas */}
       <List
         sx={{
@@ -262,40 +382,94 @@ const Sidebar: React.FC<{
           </ListSubheader>
         }
       >
-        {favoritePersonas.map((p) => (
-          <ListItem
-            key={p.name}
-            sx={{ px: 0, py: { xs: 1, sm: 1.2 }, minWidth: 0 }}
-          >
-            <ListItemAvatar sx={{ minWidth: { xs: 44, sm: 36 } }}>
-              <Avatar
-                src={p.avatar}
-                sx={{
-                  width: { xs: 36, sm: 32 },
-                  height: { xs: 36, sm: 32 },
-                  mr: 1,
-                }}
-              />
-            </ListItemAvatar>
+        {loadingFavorites ? (
+          <ListItem sx={{ px: 0, py: { xs: 1, sm: 1.2 }, minWidth: 0 }}>
             <ListItemText
               primary={
                 <Typography
                   sx={{
                     fontWeight: 500,
-                    color: "#222",
+                    color: "#888",
                     fontSize: { xs: 14, sm: 15 },
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    fontStyle: "italic",
                   }}
                 >
-                  {p.name}
+                  Loading favorites...
                 </Typography>
               }
             />
           </ListItem>
-        ))}
+        ) : favoritePersonas.length > 0 ? (
+          favoritePersonas.map((persona) => (
+            <ListItem
+              key={persona.id}
+              button
+              sx={{ px: 0, py: { xs: 1, sm: 1.2 }, minWidth: 0 }}
+              onClick={() => handleFavoritePersonaClick(persona.id)}
+            >
+              <ListItemAvatar sx={{ minWidth: { xs: 44, sm: 36 } }}>
+                <Avatar
+                  src={persona.avatar}
+                  sx={{
+                    width: { xs: 36, sm: 32 },
+                    height: { xs: 36, sm: 32 },
+                    mr: 1,
+                  }}
+                />
+              </ListItemAvatar>
+              <ListItemText
+                primary={
+                  <Typography
+                    sx={{
+                      fontWeight: 500,
+                      color: "#222",
+                      fontSize: { xs: 14, sm: 15 },
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {persona.name}
+                  </Typography>
+                }
+                secondary={
+                  persona.role && (
+                    <Typography
+                      sx={{
+                        color: "#666",
+                        fontSize: { xs: 12, sm: 13 },
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {persona.role}
+                    </Typography>
+                  )
+                }
+              />
+            </ListItem>
+          ))
+        ) : (
+          <ListItem sx={{ px: 0, py: { xs: 1, sm: 1.2 }, minWidth: 0 }}>
+            <ListItemText
+              primary={
+                <Typography
+                  sx={{
+                    fontWeight: 500,
+                    color: "#888",
+                    fontSize: { xs: 14, sm: 15 },
+                    fontStyle: "italic",
+                  }}
+                >
+                  No favorite personas yet
+                </Typography>
+              }
+            />
+          </ListItem>
+        )}
       </List>
+
       {/* Recent Chats */}
       <List
         sx={{ mx: { xs: 1.5, sm: 2 }, width: "100%", maxWidth: "100%" }}
@@ -320,47 +494,101 @@ const Sidebar: React.FC<{
           </ListSubheader>
         }
       >
-        {recentChats.map((chat) => (
-          <ListItem
-            key={chat}
-            sx={{
-              px: 0,
-              py: { xs: 0.8, sm: 0.5 },
-              minWidth: 0,
-              alignItems: "center",
-            }}
-          >
-            <ListItemAvatar
-              sx={{
-                minWidth: { xs: 44, sm: 36 },
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <ChatBubbleOutlineIcon
-                sx={{ color: "#093", fontSize: { xs: 24, sm: 22 }, mr: 0 }}
-              />
-            </ListItemAvatar>
+        {loadingRecents ? (
+          <ListItem sx={{ px: 0, py: { xs: 0.8, sm: 0.5 }, minWidth: 0 }}>
             <ListItemText
               primary={
                 <Typography
                   sx={{
                     fontWeight: 500,
-                    color: "#222",
+                    color: "#888",
                     fontSize: { xs: 14, sm: 15 },
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    ml: 0,
+                    fontStyle: "italic",
                   }}
                 >
-                  {chat}
+                  Loading recent chats...
                 </Typography>
               }
             />
           </ListItem>
-        ))}
+        ) : recentChats.length > 0 ? (
+          recentChats.map((chat) => (
+            <ListItem
+              key={`${chat.session_id}-${chat.persona_id}`}
+              button
+              sx={{
+                px: 0,
+                py: { xs: 0.8, sm: 0.5 },
+                minWidth: 0,
+                alignItems: "center",
+              }}
+              onClick={() => handleRecentChatClick(chat)}
+            >
+              <ListItemAvatar
+                sx={{
+                  minWidth: { xs: 44, sm: 36 },
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <ChatBubbleOutlineIcon
+                  sx={{ color: "#093", fontSize: { xs: 24, sm: 22 }, mr: 0 }}
+                />
+              </ListItemAvatar>
+              <ListItemText
+                primary={
+                  <Typography
+                    sx={{
+                      fontWeight: 500,
+                      color: "#222",
+                      fontSize: { xs: 14, sm: 15 },
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      ml: 0,
+                    }}
+                  >
+                    {chat.persona_name}
+                  </Typography>
+                }
+                secondary={
+                  <Typography
+                    sx={{
+                      color: "#666",
+                      fontSize: { xs: 12, sm: 13 },
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      ml: 0,
+                    }}
+                  >
+                    {chat.last_message.length > 30 
+                      ? `${chat.last_message.substring(0, 30)}...` 
+                      : chat.last_message}
+                  </Typography>
+                }
+              />
+            </ListItem>
+          ))
+        ) : (
+          <ListItem sx={{ px: 0, py: { xs: 0.8, sm: 0.5 }, minWidth: 0 }}>
+            <ListItemText
+              primary={
+                <Typography
+                  sx={{
+                    fontWeight: 500,
+                    color: "#888",
+                    fontSize: { xs: 14, sm: 15 },
+                    fontStyle: "italic",
+                  }}
+                >
+                  No recent chats with this persona
+                </Typography>
+              }
+            />
+          </ListItem>
+        )}
       </List>
     </Box>
   );

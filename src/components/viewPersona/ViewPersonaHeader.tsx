@@ -1,10 +1,10 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Box, Avatar, Typography, Button, IconButton } from "@mui/material";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
-import ShareIcon from "@mui/icons-material/Share";
+import FavoriteIcon from "@mui/icons-material/Favorite";
 
 interface ViewPersonaHeaderProps {
   avatar: string;
@@ -21,12 +21,60 @@ const ViewPersonaHeader: React.FC<ViewPersonaHeaderProps> = ({
 }) => {
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [loadingFavorite, setLoadingFavorite] = useState(false);
+
+  // Get personaId from window.location or props
+  const personaId = window.location.pathname.split("/").pop();
+
+  // Fetch favorite status on mount
+  useEffect(() => {
+    const fetchFavorite = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/favorites`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.favorites)) {
+          setIsFavorite(data.favorites.includes(personaId));
+        }
+      } catch (err) {
+        // Ignore
+      }
+    };
+    if (personaId) fetchFavorite();
+  }, [personaId]);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   };
   const handleMenuClose = () => {
     setAnchorEl(null);
+  };
+
+  const handleToggleFavorite = async () => {
+    if (!personaId) return;
+    setLoadingFavorite(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/favorites/toggle`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ personaId }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.favorites)) {
+        setIsFavorite(data.favorites.includes(personaId));
+      }
+    } catch (err) {
+      // Ignore
+    }
+    setLoadingFavorite(false);
+    handleMenuClose();
   };
 
   return (
@@ -91,13 +139,13 @@ const ViewPersonaHeader: React.FC<ViewPersonaHeaderProps> = ({
           anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
           transformOrigin={{ vertical: "top", horizontal: "right" }}
         >
-          <MenuItem onClick={handleMenuClose}>
+          <MenuItem onClick={handleToggleFavorite} disabled={loadingFavorite}>
+            {isFavorite ? (
+              <FavoriteIcon sx={{ mr: 1, color: "#e53935" }} />
+            ) : (
             <FavoriteBorderIcon sx={{ mr: 1 }} />
-            Mark as favourite
-          </MenuItem>
-          <MenuItem onClick={handleMenuClose}>
-            <ShareIcon sx={{ mr: 1 }} />
-            Share Persona
+            )}
+            {isFavorite ? "Unmark as favourite" : "Mark as favourite"}
           </MenuItem>
         </Menu>
       </Box>

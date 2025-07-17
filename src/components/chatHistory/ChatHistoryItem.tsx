@@ -1,13 +1,18 @@
 import React from "react";
-import { Box, Avatar, Typography } from "@mui/material";
+import { Box, Avatar, Typography, IconButton, Tooltip } from "@mui/material";
+import ArchiveIcon from '@mui/icons-material/Archive';
+import UnarchiveIcon from '@mui/icons-material/Unarchive';
 
 interface ChatHistoryItemProps {
   avatar: string;
   name: string;
   message: string;
   date: string;
+  archived?: boolean;
   onClick?: () => void;
   onRightClick?: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
 }
 
 const ChatHistoryItem: React.FC<ChatHistoryItemProps> = ({
@@ -15,8 +20,11 @@ const ChatHistoryItem: React.FC<ChatHistoryItemProps> = ({
   name,
   message,
   date,
+  archived = false,
   onClick,
   onRightClick,
+  onArchive,
+  onUnarchive,
 }) => (
   <Box
     sx={{
@@ -27,6 +35,7 @@ const ChatHistoryItem: React.FC<ChatHistoryItemProps> = ({
       borderRadius: 2,
       cursor: "pointer",
       "&:hover": { background: "#f5f8f6" },
+      opacity: archived ? 0.7 : 1,
     }}
     onClick={onClick}
     onContextMenu={(e) => {
@@ -65,11 +74,34 @@ const ChatHistoryItem: React.FC<ChatHistoryItemProps> = ({
         minWidth: 70,
         textAlign: "right",
         ml: 0,
-        mr: 2.5,
+        mr: 1,
       }}
     >
       {date}
     </Typography>
+    {(onArchive || onUnarchive) && (
+      <Tooltip title={archived ? "Unarchive" : "Archive"}>
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (archived && onUnarchive) {
+              onUnarchive();
+            } else if (!archived && onArchive) {
+              onArchive();
+            }
+          }}
+          sx={{
+            color: archived ? "#7bb47b" : "#666",
+            "&:hover": {
+              color: archived ? "#388e3c" : "#333",
+            },
+          }}
+        >
+          {archived ? <UnarchiveIcon /> : <ArchiveIcon />}
+        </IconButton>
+      </Tooltip>
+    )}
   </Box>
 );
 

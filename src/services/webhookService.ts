@@ -11,6 +11,8 @@ export interface WebhookMessage {
   user_id?: string;
   session_id: string;
   timestamp: string;
+  fileUrl?: string;
+  fileType?: string;
 }
 
 export interface WebhookResponse {
@@ -27,24 +29,41 @@ interface GenericResponse {
 export const sendToWebhook = async (
   message: string,
   personaId: string,
-  personaName: string
+  personaName: string,
+  fileUrl?: string,
+  fileType?: string
 ): Promise<string> => {
   try {
     // Get or create session ID for this persona
     const sessionId = getSessionId(personaId);
 
+    // Enhance message with file information if present
+    let enhancedMessage = message;
+    if (fileUrl) {
+      const fileInfo = fileType && fileType.startsWith('image/') 
+        ? `[IMAGE ATTACHED: ${fileUrl}]` 
+        : `[FILE ATTACHED: ${fileUrl}]`;
+      enhancedMessage = fileInfo + (message ? ` ${message}` : '');
+    }
+
     const payload: WebhookMessage = {
-      message: message,
+      message: enhancedMessage,
       persona_id: personaId,
       persona_name: personaName,
       user_id: "current_user", // You can extend this to get actual user ID
       session_id: sessionId,
       timestamp: new Date().toISOString(),
+      ...(fileUrl && { fileUrl }),
+      ...(fileType && { fileType }),
     };
 
     console.log("🚀 Sending to webhook:", WEBHOOK_URL);
     console.log("👤 Persona:", personaName, `(ID: ${personaId})`);
     console.log("🔑 Session ID:", sessionId);
+    if (fileUrl) {
+      console.log("📎 File attachment:", fileUrl, `(Type: ${fileType})`);
+      console.log("💬 Enhanced message:", enhancedMessage);
+    }
     console.log("📦 Payload:", JSON.stringify(payload, null, 2));
 
     const response = await fetch(WEBHOOK_URL, {

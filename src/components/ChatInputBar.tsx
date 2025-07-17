@@ -3,11 +3,12 @@ import { Box, IconButton, Paper, InputBase, Chip } from "@mui/material";
 import { IoSend } from "react-icons/io5";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import type { Persona } from "../types";
+import CircularProgress from '@mui/material/CircularProgress';
 
 interface ChatInputBarProps {
   value?: string;
   onChange?: (value: string) => void;
-  onSend?: (message: string) => void;
+  onSend?: (msgObj: { message: string; fileUrl?: string; fileType?: string }) => void;
   onFileUpload?: (file: File) => void;
   placeholder?: string;
   suggestions?: string[];
@@ -23,7 +24,6 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   value = "",
   onChange,
   onSend,
-  onFileUpload,
   placeholder = "Send a message",
   suggestions = [],
   showSuggestions = false,
@@ -34,6 +34,9 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   maxWidth = 960,
 }) => {
   const [messageInput, setMessageInput] = useState(value);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Handle input change
@@ -42,14 +45,49 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
     onChange?.(newValue);
   };
 
-  // Handle send message
-  const handleSendMessage = (e?: React.FormEvent) => {
+  // Handle send message (with file upload)
+  const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = messageInput.trim();
-    if (!trimmed || disabled) return;
+    if ((!trimmed && !selectedFile) || disabled) return;
 
-    onSend?.(trimmed);
+    let fileUrl = undefined;
+    let fileType = undefined;
+    if (selectedFile) {
+      setUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/upload`, {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+        } as any);
+        const data = await res.json();
+        if (data.success) {
+          fileUrl = data.fileUrl;
+          fileType = data.fileType;
+        } else {
+          alert('File upload failed: ' + data.message);
+          setUploading(false);
+          return;
+        }
+      } catch (err) {
+        alert('File upload error.');
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    }
+
+    // Pass fileUrl and fileType to onSend if present
+    if (onSend) {
+      (onSend as any)({ message: trimmed, fileUrl, fileType });
+    }
     setMessageInput("");
+    setSelectedFile(null);
+    setFilePreviewUrl(null);
     onChange?.("");
   };
 
@@ -58,23 +96,33 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && onFileUpload) {
-      onFileUpload(file);
+    if (!file) return;
+    // Validate file size (max 20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      alert('File size exceeds 20MB limit.');
+      return;
     }
+    setSelectedFile(file);
+    if (file.type.startsWith('image/')) {
+      setFilePreviewUrl(URL.createObjectURL(file));
+    } else {
+      setFilePreviewUrl(null);
+    }
+  };
+
+  // Remove selected file
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setFilePreviewUrl(null);
   };
 
   // Handle suggestion click
   const handleSuggestionClick = (suggestion: string) => {
     setMessageInput(suggestion);
     onChange?.(suggestion);
-    // Auto-send the message after setting it
-    setTimeout(() => {
-      onSend?.(suggestion);
-      setMessageInput("");
-      onChange?.("");
-    }, 100);
+    // Do NOT auto-send the message
   };
 
   // Get suggestion chips for persona
@@ -207,8 +255,22 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
           ref={fileInputRef}
           style={{ display: "none" }}
           onChange={handleFileChange}
-          accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt"
+          accept="image/*,.pdf,.doc,.docx,.txt"
         />
+        {/* File preview */}
+        {selectedFile && (
+          <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
+            {filePreviewUrl ? (
+              <img src={filePreviewUrl} alt="preview" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8, marginRight: 8 }} />
+            ) : (
+              <span style={{ marginRight: 8 }}>{selectedFile.name}</span>
+            )}
+            <IconButton size="small" onClick={handleRemoveFile} disabled={uploading}>
+              ✕
+            </IconButton>
+            {uploading && <CircularProgress size={20} sx={{ ml: 1 }} />}
+          </Box>
+        )}
 
         {/* Single integrated chat input bar */}
         <Paper
@@ -228,22 +290,25 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
           }}
           elevation={0}
         >
-          {/* File upload button (optional) */}
-          {onFileUpload && (
+          {/* File upload button (always visible) */}
             <IconButton
               onClick={handleUploadClick}
               sx={{
-                color: "#666",
                 mr: 1,
+              backgroundColor: "transparent !important",
                 "&:hover": {
-                  backgroundColor: "#f5f5f5",
+                backgroundColor: "transparent !important",
+              },
+              "&:focus": {
+                backgroundColor: "transparent !important",
                 },
               }}
               disabled={disabled}
+            disableRipple
+            disableFocusRipple
             >
               <AttachFileIcon sx={{ fontSize: 20 }} />
             </IconButton>
-          )}
 
           {/* Main input field */}
           <InputBase

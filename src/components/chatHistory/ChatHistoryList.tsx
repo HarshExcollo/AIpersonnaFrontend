@@ -7,8 +7,11 @@ export interface Chat {
   name: string;
   message: string;
   date: string;
+  archived?: boolean;
   onClick?: () => void;
   onRightClick?: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
 }
 
 interface ChatHistoryListProps {
@@ -21,7 +24,17 @@ const ChatHistoryList: React.FC<ChatHistoryListProps> = ({
   <Box ml={2}>
     {chats.map((chat, idx) => (
       <Box key={idx} sx={{ mb: 0.5 }}>
-        <ChatHistoryItem {...chat} />
+        <ChatHistoryItem 
+          avatar={chat.avatar}
+          name={chat.name}
+          message={chat.message}
+          date={chat.date}
+          archived={chat.archived}
+          onClick={chat.onClick}
+          onRightClick={chat.onRightClick}
+          onArchive={chat.onArchive}
+          onUnarchive={chat.onUnarchive}
+        />
       </Box>
     ))}
   </Box>
