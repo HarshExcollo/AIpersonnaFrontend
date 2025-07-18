@@ -42,7 +42,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-  const SIDEBAR_WIDTH = isMobile ? 280 : 220; // Match Sidebar width
+  const SIDEBAR_WIDTH = 280; // Fixed width for consistent sidebar
 
   // Profile popover state and handlers
   const [profileAnchorEl, setProfileAnchorEl] =

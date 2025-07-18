@@ -180,7 +180,7 @@ const Sidebar: React.FC<{
   return (
     <Box
       sx={{
-        width: { xs: 320, sm: 280 },
+        width: 280,
         height: "100vh",
         bgcolor: "#fff",
         p: 0,
@@ -190,12 +190,6 @@ const Sidebar: React.FC<{
         borderRight: "1px solid #e0e0e0",
         overflowY: "auto",
         overflowX: "hidden",
-        position: "fixed",
-        top: 0,
-        left: 0,
-        zIndex: 1200,
-        mt: 0,
-        pt: 0,
         // Hide scrollbar for all browsers
         scrollbarWidth: "none", // Firefox
         "&::-webkit-scrollbar": { display: "none" }, // Chrome, Safari, Opera
@@ -264,13 +258,11 @@ const Sidebar: React.FC<{
           mt: { xs: 2, sm: 2.5 },
           boxShadow: "none",
           textTransform: "none",
-          width: "100%",
-          maxWidth: { xs: 240, sm: 160 },
+          width: "calc(100% - 32px)",
           minWidth: 0,
           letterSpacing: 0.1,
           "&:hover": { bgcolor: "#059134" },
-          ml: { xs: 1.5, sm: 1.7 },
-          mr: { xs: 1.5, sm: 1 },
+          mx: 2,
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",

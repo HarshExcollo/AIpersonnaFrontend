@@ -107,7 +107,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [messages, setMessages] = useState<
-    { sender: "user" | "ai"; text: string; fileUrl?: string; fileType?: string; isTyping?: boolean; id?: string }[]
+    { sender: "user" | "ai"; text: string; fileUrl?: string; fileType?: string; isTyping?: boolean; id?: string; fileUrls?: string[]; fileTypes?: string[] }[]
   >([]);
   const [messageInput, setMessageInput] = useState("");
   const [currentSessionId, setCurrentSessionId] = useState<string>("");
@@ -172,7 +172,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
         if (data.success && Array.isArray(data.chats)) {
           console.log('Loading chat history:', data.chats);
           // Convert chat data to message format
-                    const loadedMessages = data.chats.flatMap((chat: { _id: string; user_message: string; ai_response: string; fileUrl?: string; fileType?: string }) => {
+                    const loadedMessages = data.chats.flatMap((chat: { _id: string; user_message: string; ai_response: string; fileUrl?: string; fileType?: string; fileUrls?: string[]; fileTypes?: string[] }) => {
             console.log('Processing chat:', { 
               _id: chat._id,
               user_message: chat.user_message, 
@@ -181,7 +181,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
             });
             return [
               { sender: "user" as const, text: chat.user_message, fileUrl: chat.fileUrl, fileType: chat.fileType, id: chat._id },
-            { sender: "ai" as const, text: chat.ai_response },
+            { sender: "ai" as const, text: chat.ai_response, fileUrls: chat.fileUrls, fileTypes: chat.fileTypes },
             ];
           });
 
@@ -447,15 +447,51 @@ export default function ChatPage({ onBack }: ChatPageProps) {
     setEditingText("");
   };
 
+  // Show loading indicator while loading chat history
+  // if (isLoading) {
+  //   return (
+  //     <Box
+  //       sx={{
+  //         height: "100vh",
+  //         bgcolor: "#fff",
+  //         display: "flex",
+  //         flexDirection: "column",
+  //         alignItems: "center",
+  //         justifyContent: "center",
+  //       }}
+  //     >
+  //       <Typography variant="h6" sx={{ color: "#52946B" }}>
+  //         Loading chat history...
+  //       </Typography>
+  //     </Box>
+  //   );
+  // }
+
+  // Check if persona exists after loading is complete
   if (!persona) {
-    return <div>Persona not found</div>;
+    return (
+      <Box
+        sx={{
+          height: "100vh",
+          bgcolor: "#fff",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Typography variant="h6" sx={{ color: "#52946B" }}>
+          Persona not found
+        </Typography>
+      </Box>
+    );
   }
 
   // Handler to open sidebar from header
   const handleMenuClick = () => setSidebarOpen(true);
   // Handler to close sidebar
   const handleSidebarClose = () => setSidebarOpen(false);
-  const SIDEBAR_WIDTH = isMobile ? 320 : 280;
+  const SIDEBAR_WIDTH = 280; // Fixed width for consistent sidebar
 
   // Handler to close persona switcher
   const handleSwitcherClose = () => {
@@ -586,26 +622,6 @@ export default function ChatPage({ onBack }: ChatPageProps) {
   const hasUserMessages =
     messages.filter((msg) => msg.sender === "user").length > 0;
 
-  // Show loading indicator while loading chat history
-  if (isLoading) {
-    return (
-      <Box
-        sx={{
-          height: "100vh",
-          bgcolor: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Typography variant="h6" sx={{ color: "#52946B" }}>
-          Loading chat history...
-        </Typography>
-      </Box>
-    );
-  }
-
   return (
     <Box
       sx={{
@@ -639,16 +655,44 @@ export default function ChatPage({ onBack }: ChatPageProps) {
           overflow: "hidden",
           width: "100%",
           maxWidth: "100vw",
+          position: "relative",
         }}
       >
-        {/* Sidebar */}
-        {sidebarOpen && (
+        {/* Mobile backdrop overlay */}
+        {sidebarOpen && isMobile && (
+          <Box
+            sx={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              bgcolor: "rgba(0, 0, 0, 0.5)",
+              zIndex: 1199,
+              transition: "opacity 0.3s ease",
+            }}
+            onClick={handleSidebarClose}
+          />
+        )}
+
+        {/* Sidebar - Always rendered but positioned off-screen when closed */}
+        <Box
+          sx={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            height: "100vh",
+            zIndex: 1200,
+            transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
+            transition: "transform 0.3s cubic-bezier(.4,0,.2,1)",
+          }}
+        >
           <Sidebar 
             onClose={handleSidebarClose} 
             currentPersonaId={persona.id}
             onSearchChats={() => setSearchModalOpen(true)}
           />
-        )}
+        </Box>
 
         {/* Main chat area wrapper */}
         <Box
@@ -658,7 +702,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
             flexDirection: "column",
             position: "relative",
             transition: "margin-left 0.3s cubic-bezier(.4,0,.2,1)",
-            ml: sidebarOpen ? `${SIDEBAR_WIDTH}px` : 0,
+            ml: { xs: 0, md: sidebarOpen ? `${SIDEBAR_WIDTH}px` : 0 },
             height: "100%",
             width: "100%",
             maxWidth: "100vw",
@@ -900,128 +944,142 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                         )}
                       </Avatar>
                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, maxWidth: { xs: "100%", sm: 400 } }}>
-                                                  {msg.fileUrl && (
-                            <Box sx={{ bgcolor: "#00875A", borderRadius: 3, p: 1, boxShadow: "0 2px 8px rgba(44,62,80,0.04)" }}>
-                              {msg.fileType && msg.fileType.startsWith('image/') ? (
-                                <img 
-                                  src={msg.fileUrl} 
-                                  alt="attachment" 
-                            style={{
-                                    maxWidth: 250, 
-                                    maxHeight: 250, 
-                                    borderRadius: 8,
-                                    display: 'block',
-                                    width: '100%',
-                                    height: 'auto'
-                            }}
-                          />
-                        ) : (
-                                <Box 
-                                  sx={{ 
-                                    width: 20, 
-                                    height: 20, 
-                                    bgcolor: '#fff', 
-                                    borderRadius: 1,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer'
-                                  }}
-                                  onClick={() => window.open(msg.fileUrl, '_blank')}
-                                >
-                                  <Box sx={{ 
-                                    width: 12, 
-                                    height: 12, 
-                                    bgcolor: '#00875A', 
-                                    borderRadius: 0.5 
-                                  }} />
+                        {/* Multiple images support */}
+                        {Array.isArray(msg.fileUrls) && msg.fileUrls.length > 0 && (
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                            {msg.fileUrls.map((url: string, idx: number) => (
+                              <img
+                                key={idx}
+                                src={url}
+                                alt={`attachment-${idx}`}
+                                style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8 }}
+                              />
+                            ))}
+                          </Box>
+                        )}
+                        {/* Single file fallback */}
+                        {msg.fileUrl && !msg.fileUrls && (
+                          <Box sx={{ bgcolor: "#00875A", borderRadius: 3, p: 1, boxShadow: "0 2px 8px rgba(44,62,80,0.04)" }}>
+                            {msg.fileType && msg.fileType.startsWith('image/') ? (
+                              <img 
+                                src={msg.fileUrl} 
+                                alt="attachment" 
+                                style={{
+                                  maxWidth: 250, 
+                                  maxHeight: 250, 
+                                  borderRadius: 8,
+                                  display: 'block',
+                                  width: '100%',
+                                  height: 'auto'
+                                }}
+                              />
+                            ) : (
+                              <Box 
+                                sx={{ 
+                                  width: 20, 
+                                  height: 20, 
+                                  bgcolor: '#fff', 
+                                  borderRadius: 1,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => window.open(msg.fileUrl, '_blank')}
+                              >
+                                <Box sx={{ 
+                                  width: 12, 
+                                  height: 12, 
+                                  bgcolor: '#00875A', 
+                                  borderRadius: 0.5 
+                                }} />
+                              </Box>
+                            )}
+                          </Box>
+                        )}
+                        {msg.text && (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            <Box sx={{ 
+                              bgcolor: "#00875A",
+                              color: "#fff",
+                              px: { xs: 2.5, sm: 3 },
+                              py: { xs: 2, sm: 2.5 },
+                              borderRadius: 3,
+                              fontSize: 16,
+                              fontWeight: 400,
+                              wordBreak: "break-word",
+                              boxShadow: "0 2px 8px rgba(44,62,80,0.04)",
+                              lineHeight: 1.5,
+                              textAlign: "start",
+                              whiteSpace: "pre-wrap",
+                              maxWidth: '100%',
+                              '&:hover + .edit-button-container .edit-button': {
+                                opacity: 1
+                              }
+                            }}>
+                              {editingMessageId === msg.id ? (
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                  <TextField
+                                    value={editingText}
+                                    onChange={(e) => setEditingText(e.target.value)}
+                                    multiline
+                                    fullWidth
+                                    variant="outlined"
+                                    sx={{
+                                      '& .MuiOutlinedInput-root': {
+                                        color: '#fff',
+                                        '& fieldset': {
+                                          borderColor: 'rgba(255,255,255,0.3)',
+                                        },
+                                        '&:hover fieldset': {
+                                          borderColor: 'rgba(255,255,255,0.5)',
+                                        },
+                                        '&.Mui-focused fieldset': {
+                                          borderColor: '#fff',
+                                        },
+                                      },
+                                    }}
+                                  />
+                                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => handleSaveEdit(msg.id!)}
+                                      sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' }}
+                                    >
+                                      <CheckIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton
+                                      size="small"
+                                      onClick={handleCancelEdit}
+                                      sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' }}
+                                    >
+                                      <CloseIcon fontSize="small" />
+                                    </IconButton>
+                                  </Box>
                                 </Box>
+                              ) : (
+                                <Box>{msg.text}</Box>
                               )}
                             </Box>
-                          )}
-                        {msg.text && (
-                          <Box sx={{ 
-                          bgcolor: "#00875A",
-                          color: "#fff",
-                          px: { xs: 2.5, sm: 3 },
-                          py: { xs: 2, sm: 2.5 },
-                          borderRadius: 3,
-                          fontSize: 16,
-                          fontWeight: 400,
-                          wordBreak: "break-word",
-                          boxShadow: "0 2px 8px rgba(44,62,80,0.04)",
-                          lineHeight: 1.5,
-                          textAlign: "start",
-                          whiteSpace: "pre-wrap",
-                            maxWidth: '100%',
-                            position: 'relative',
-                            '&:hover .edit-button': {
-                              opacity: 1
-                            }
-                          }}>
-                            {editingMessageId === msg.id ? (
-                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                <TextField
-                                  value={editingText}
-                                  onChange={(e) => setEditingText(e.target.value)}
-                                  multiline
-                                  fullWidth
-                                  variant="outlined"
-                                  sx={{
-                                    '& .MuiOutlinedInput-root': {
-                                      color: '#fff',
-                                      '& fieldset': {
-                                        borderColor: 'rgba(255,255,255,0.3)',
-                                      },
-                                      '&:hover fieldset': {
-                                        borderColor: 'rgba(255,255,255,0.5)',
-                                      },
-                                      '&.Mui-focused fieldset': {
-                                        borderColor: '#fff',
-                                      },
-                                    },
-                                  }}
-                                />
-                                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => handleSaveEdit(msg.id!)}
-                                    sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' }}
-                                  >
-                                    <CheckIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={handleCancelEdit}
-                                    sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.1)' }}
-                                  >
-                                    <CloseIcon fontSize="small" />
-                                  </IconButton>
-                                </Box>
-                              </Box>
-                            ) : (
-                              <>
-                        {msg.text}
+                            {editingMessageId !== msg.id && (
+                              <Box className="edit-button-container" sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                                 <IconButton
                                   className="edit-button"
                                   size="small"
                                   onClick={() => handleEditMessage(msg.id!, msg.text)}
                                   sx={{
-                                    position: 'absolute',
-                                    top: 4,
-                                    right: 4,
-                                    color: '#fff',
-                                    bgcolor: 'rgba(255,255,255,0.1)',
+                                    color: '#666',
+                                    bgcolor: 'rgba(0,0,0,0.05)',
                                     opacity: 0,
                                     transition: 'opacity 0.2s',
                                     '&:hover': {
-                                      bgcolor: 'rgba(255,255,255,0.2)',
+                                      bgcolor: 'rgba(0,0,0,0.1)',
                                     }
                                   }}
                                 >
                                   <EditIcon fontSize="small" />
                                 </IconButton>
-                              </>
+                              </Box>
                             )}
                           </Box>
                         )}

@@ -24,9 +24,9 @@ const ChatHistoryTabs: React.FC<ChatHistoryTabsProps> = ({
       sx={{
         fontWeight: 600,
         fontSize: 17,
-        color: tab === "all" ? "#222" : "#7bb47b",
+        color: tab === "all" ? "#388e3c" : "#7bb47b",
         borderBottom:
-          tab === "all" ? "2.5px solid #222" : "2.5px solid transparent",
+          tab === "all" ? "2.5px solid #388e3c" : "2.5px solid transparent",
         pb: 0.5,
         cursor: "pointer",
         mr: 2,

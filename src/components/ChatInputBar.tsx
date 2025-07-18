@@ -4,6 +4,7 @@ import { IoSend } from "react-icons/io5";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import type { Persona } from "../types";
 import CircularProgress from '@mui/material/CircularProgress';
+import { useDropzone } from 'react-dropzone';
 
 interface ChatInputBarProps {
   value?: string;
@@ -34,8 +35,8 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   maxWidth = 960,
 }) => {
   // Remove internal messageInput state; use value prop directly
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [filePreviewUrls, setFilePreviewUrls] = useState<(string | null)[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,15 +49,15 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = value.trim();
-    if ((!trimmed && !selectedFile) || disabled) return;
+    if ((!trimmed && selectedFiles.length === 0) || disabled) return;
 
-    let fileUrl = undefined;
-    let fileType = undefined;
-    if (selectedFile) {
+    let fileUrls: string[] = [];
+    let fileTypes: string[] = [];
+    if (selectedFiles.length > 0) {
       setUploading(true);
       try {
         const formData = new FormData();
-        formData.append('file', selectedFile);
+        selectedFiles.forEach((file) => formData.append('uploadedImages', file));
         const token = localStorage.getItem('token');
         const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/upload`, {
           method: 'POST',
@@ -64,9 +65,9 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
           body: formData,
         });
         const data = await res.json();
-        if (data.success) {
-          fileUrl = data.fileUrl;
-          fileType = data.fileType;
+        if (data.success && Array.isArray(data.files)) {
+          fileUrls = data.files.map((f: any) => f.fileUrl);
+          fileTypes = data.files.map((f: any) => f.fileType);
         } else {
           alert('File upload failed: ' + data.message);
           setUploading(false);
@@ -80,12 +81,18 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
       setUploading(false);
     }
 
-    // Pass fileUrl and fileType to onSend if present
+    // Pass fileUrls and fileTypes to onSend if present
     if (onSend) {
-      onSend({ message: trimmed, fileUrl, fileType });
+      // For backward compatibility, send only the first file if only one, else send arrays
+      if (fileUrls.length <= 1) {
+        onSend({ message: trimmed, fileUrl: fileUrls[0], fileType: fileTypes[0] });
+      } else {
+        // @ts-ignore
+        onSend({ message: trimmed, fileUrls, fileTypes });
+      }
     }
-    setSelectedFile(null);
-    setFilePreviewUrl(null);
+    setSelectedFiles([]);
+    setFilePreviewUrls([]);
     if (onChange) onChange("");
   };
 
@@ -95,25 +102,34 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    // Validate file size (max 20MB)
-    if (file.size > 20 * 1024 * 1024) {
-      alert('File size exceeds 20MB limit.');
+    const files = event.target.files;
+    if (!files) return;
+    let newFiles: File[] = Array.from(files);
+    // Limit to 5 files
+    if (selectedFiles.length + newFiles.length > 5) {
+      alert('You can upload up to 5 files per message.');
       return;
     }
-    setSelectedFile(file);
-    if (file.type.startsWith('image/')) {
-      setFilePreviewUrl(URL.createObjectURL(file));
-    } else {
-      setFilePreviewUrl(null);
+    // Validate file size (max 20MB each)
+    for (const file of newFiles) {
+      if (file.size > 20 * 1024 * 1024) {
+        alert('File size exceeds 20MB limit.');
+        return;
+      }
     }
+    const allFiles = [...selectedFiles, ...newFiles];
+    setSelectedFiles(allFiles);
+    setFilePreviewUrls(allFiles.map(f => f.type.startsWith('image/') ? URL.createObjectURL(f) : null));
   };
 
   // Remove selected file
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
-    setFilePreviewUrl(null);
+  const handleRemoveFile = (idx: number) => {
+    const newFiles = [...selectedFiles];
+    const newPreviews = [...filePreviewUrls];
+    newFiles.splice(idx, 1);
+    newPreviews.splice(idx, 1);
+    setSelectedFiles(newFiles);
+    setFilePreviewUrls(newPreviews);
   };
 
   // Handle suggestion click
@@ -180,6 +196,31 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
     return [];
   }, [suggestions, persona]);
 
+  // Dropzone logic
+  const onDrop = React.useCallback((acceptedFiles: File[]) => {
+    if (acceptedFiles && acceptedFiles.length > 0) {
+      let newFiles: File[] = acceptedFiles;
+      if (selectedFiles.length + newFiles.length > 5) {
+        alert('You can upload up to 5 files per message.');
+        return;
+      }
+      for (const file of newFiles) {
+        if (file.size > 20 * 1024 * 1024) {
+          alert('File size exceeds 20MB limit.');
+          return;
+        }
+      }
+      const allFiles = [...selectedFiles, ...newFiles];
+      setSelectedFiles(allFiles);
+      setFilePreviewUrls(allFiles.map(f => f.type.startsWith('image/') ? URL.createObjectURL(f) : null));
+    }
+  }, [selectedFiles]);
+  const {
+    getRootProps,
+    getInputProps,
+    isDragActive
+  } = useDropzone({ onDrop, multiple: true, noClick: true as any });
+
   return (
     <Box
       sx={{
@@ -194,7 +235,29 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
         pb: { xs: 2, sm: 4 },
         background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 20%)",
       }}
+      {...getRootProps({})}
     >
+      <input {...getInputProps({})} />
+      {isDragActive && (
+        <Box sx={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          top: 0,
+          zIndex: 100,
+          bgcolor: 'rgba(90,200,150,0.12)',
+          border: '2px dashed #059134',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#059134',
+          fontSize: 22,
+          fontWeight: 600,
+        }}>
+          Drop files here to attach
+        </Box>
+      )}
       {/* Suggestion Chips */}
       {showSuggestions && suggestionChips.length > 0 && (
         <Box
@@ -248,24 +311,67 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
       >
         {/* File input (hidden) */}
         <input
-          type="file"
           ref={fileInputRef}
+          type="file"
           style={{ display: "none" }}
           onChange={handleFileChange}
-          accept="image/*,.pdf,.doc,.docx,.txt"
+          multiple
         />
-        {/* File preview */}
-        {selectedFile && (
-          <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
-            {filePreviewUrl ? (
-              <img src={filePreviewUrl} alt="preview" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8, marginRight: 8 }} />
-            ) : (
-              <span style={{ marginRight: 8 }}>{selectedFile.name}</span>
-            )}
-            <IconButton size="small" onClick={handleRemoveFile} disabled={uploading}>
-              ✕
-            </IconButton>
-            {uploading && <CircularProgress size={20} sx={{ ml: 1 }} />}
+        {/* File preview (if any) */}
+        {selectedFiles.length > 0 && (
+          <Box sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1.5,
+            ml: 2,
+            maxWidth: 220,
+          }}>
+            {selectedFiles.map((file, idx) => (
+              filePreviewUrls[idx] ? (
+                // Image preview: only thumbnail, 2 per row
+                <Box key={idx} sx={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: 2,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  mr: (idx % 2 === 1) ? 0 : 1.5,
+                  mb: 1.5,
+                  display: 'inline-block',
+                }}>
+                  <Box
+                    component="img"
+                    src={filePreviewUrls[idx] as string}
+                    alt="preview"
+                    sx={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 2 }}
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => handleRemoveFile(idx)}
+                    sx={{
+                      position: 'absolute',
+                      top: 2,
+                      right: 2,
+                      bgcolor: 'rgba(255,255,255,0.7)',
+                      color: '#333',
+                      p: 0.2,
+                      zIndex: 2,
+                      '&:hover': { bgcolor: 'rgba(255,255,255,1)' },
+                    }}
+                  >
+                    ×
+                  </IconButton>
+                </Box>
+              ) : (
+                // Non-image: show as chip
+                <Chip
+                  key={idx}
+                  label={file.name}
+                  onDelete={() => handleRemoveFile(idx)}
+                  sx={{ bgcolor: "#e8f5e8", fontWeight: 500 }}
+                />
+              )
+            ))}
           </Box>
         )}
 
