@@ -3,9 +3,16 @@ import { Box, IconButton, Paper, InputBase, Chip, Menu, MenuItem } from "@mui/ma
 import { IoSend } from "react-icons/io5";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import type { Persona } from "../types";
-import CircularProgress from '@mui/material/CircularProgress';
 import { useDropzone } from 'react-dropzone';
-import DriveFolderIcon from '@mui/icons-material/DriveFolderUpload';
+
+// Add global declaration for window.gapi, window.google, window.onSendFromDrive
+declare global {
+  interface Window {
+    gapi: unknown;
+    google: unknown;
+    onSendFromDrive?: (fileObj: unknown) => void;
+  }
+}
 
 interface ChatInputBarProps {
   value?: string;
@@ -38,7 +45,6 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   // Remove internal messageInput state; use value prop directly
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [filePreviewUrls, setFilePreviewUrls] = useState<(string | null)[]>([]);
-  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -56,7 +62,6 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
     let fileUrls: string[] = [];
     let fileTypes: string[] = [];
     if (selectedFiles.length > 0) {
-      setUploading(true);
       try {
         const formData = new FormData();
         selectedFiles.forEach((file) => formData.append('uploadedImages', file));
@@ -72,15 +77,12 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
           fileTypes = data.files.map((f: any) => f.fileType);
         } else {
           alert('File upload failed: ' + data.message);
-          setUploading(false);
           return;
         }
       } catch {
         alert('File upload error.');
-        setUploading(false);
         return;
       }
-      setUploading(false);
     }
 
     // Pass fileUrls and fileTypes to onSend if present
@@ -98,15 +100,10 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
     if (onChange) onChange("");
   };
 
-  // Handle file upload
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
-    let newFiles: File[] = Array.from(files);
+    const newFiles: File[] = Array.from(files);
     // Limit to 5 files
     if (selectedFiles.length + newFiles.length > 5) {
       alert('You can upload up to 5 files per message.');
@@ -201,7 +198,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   // Dropzone logic
   const onDrop = React.useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles && acceptedFiles.length > 0) {
-      let newFiles: File[] = acceptedFiles;
+      const newFiles: File[] = acceptedFiles;
       if (selectedFiles.length + newFiles.length > 5) {
         alert('You can upload up to 5 files per message.');
         return;
@@ -217,11 +214,12 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
       setFilePreviewUrls(allFiles.map(f => f.type.startsWith('image/') ? URL.createObjectURL(f) : null));
     }
   }, [selectedFiles]);
+  // For useDropzone, cast options as any to avoid DropzoneOptions error
   const {
     getRootProps,
     getInputProps,
     isDragActive
-  } = useDropzone({ onDrop, multiple: true, noClick: true as any });
+  } = useDropzone({ onDrop, multiple: true, noClick: true } as any);
 
   // Google Picker constants (replace with your real values)
   const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
@@ -232,7 +230,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   let pickerApiLoaded = false;
 
   function onAuthApiLoad() {
-    window.gapi.auth.authorize(
+    (window.gapi as any).auth.authorize(
       {
         'client_id': GOOGLE_CLIENT_ID,
         'scope': ['https://www.googleapis.com/auth/drive.readonly'],
@@ -246,17 +244,17 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
     pickerApiLoaded = true;
   }
 
-  function handleAuthResult(authResult: any) {
-    if (authResult && !authResult.error) {
-      oauthToken = authResult.access_token;
+  function handleAuthResult(authResult: unknown) {
+    if (authResult && typeof authResult === 'object' && !(authResult as any).error) {
+      oauthToken = (authResult as any).access_token;
       createPicker();
     }
   }
 
   function createPicker() {
     if (pickerApiLoaded && oauthToken) {
-      const picker = new window.google.picker.PickerBuilder()
-        .addView(window.google.picker.ViewId.DOCS)
+      const picker = new (window.google as any).picker.PickerBuilder()
+        .addView((window.google as any).picker.ViewId.DOCS)
         .setOAuthToken(oauthToken)
         .setDeveloperKey(GOOGLE_API_KEY)
         .setCallback(pickerCallback)
@@ -265,9 +263,9 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
     }
   }
 
-  function pickerCallback(data: any) {
-    if (data.action === window.google.picker.Action.PICKED) {
-      const file = data.docs[0];
+  function pickerCallback(data: unknown) {
+    if (data && typeof data === 'object' && (data as any).action === (window.google as any).picker.Action.PICKED) {
+      const file = (data as any).docs[0];
       // For images, use file.url; for others, use file.url or file.embedUrl
       if (file && file.url) {
         // Call onSend with the file URL (as an image or file link)
@@ -287,12 +285,12 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   }
 
   const openGooglePicker = () => {
-    if (!window.gapi) {
+    if (!(window.gapi as any)) {
       alert('Google API not loaded.');
       return;
     }
-    window.gapi.load('auth', { callback: onAuthApiLoad });
-    window.gapi.load('picker', { callback: onPickerApiLoad });
+    (window.gapi as any).load('auth', { callback: onAuthApiLoad });
+    (window.gapi as any).load('picker', { callback: onPickerApiLoad });
   };
 
   // Attach a global handler for Google Picker callback
