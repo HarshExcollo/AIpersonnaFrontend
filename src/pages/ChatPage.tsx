@@ -23,6 +23,12 @@ import { getSessionId, startNewSession } from "../utils/session";
 import ChatInputBar from "../components/ChatInputBar";
 import ChatSearchModal from "../components/ChatSearchModal";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import AutorenewIcon from '@mui/icons-material/Autorenew';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import Button from '@mui/material/Button';
 
 interface ChatPageProps {
   onBack: () => void;
@@ -118,6 +124,19 @@ export default function ChatPage({ onBack }: ChatPageProps) {
   const [userAvatar, setUserAvatar] = useState("");
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [allSessions, setAllSessions] = useState([]); // [{ session_id, messages, date }]
+  const [allPersonas, setAllPersonas] = useState<Persona[]>([]);
+
+  // Fetch all personas for persona switcher
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.data)) {
+          setAllPersonas(data.data);
+        }
+      });
+  }, []);
+
   useEffect(() => {
     try {
       const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -499,23 +518,30 @@ export default function ChatPage({ onBack }: ChatPageProps) {
     setAnchorEl(null);
   };
 
+  // Handler for switch persona
+  const handleSwitchPersona = (personaId: string) => {
+    setSwitcherOpen(false);
+    navigate(`/chat/${personaId}`);
+  };
+
   const handleAvatarClick = () => {
     navigate(`/view-persona/${persona.id}`);
   };
 
-  // Updated handleSendMessage with session ID logic and chat persistence
-  const handleSendMessage = async (msgObj: { message: string; fileUrl?: string; fileType?: string }) => {
-    // msgObj: { message, fileUrl, fileType }
+  // Updated handleSendMessage to support multiple images
+  const handleSendMessage = async (msgObj: { message: string; fileUrl?: string; fileType?: string; fileUrls?: string[]; fileTypes?: string[] }) => {
     const trimmed = (msgObj.message || "").trim();
     const fileUrl = msgObj.fileUrl;
     const fileType = msgObj.fileType;
-    if (!trimmed && !fileUrl) return;
+    const fileUrls = msgObj.fileUrls;
+    const fileTypes = msgObj.fileTypes;
+    if (!trimmed && !fileUrl && !(fileUrls && fileUrls.length > 0)) return;
 
     // Add user message with unique ID
     const messageId = Date.now().toString();
     setMessages((prev) => [
       ...prev,
-      { sender: "user", text: trimmed, fileUrl, fileType, id: messageId },
+      { sender: "user", text: trimmed, fileUrl, fileType, fileUrls, fileTypes, id: messageId },
     ]);
     setMessageInput("");
 
@@ -543,10 +569,10 @@ export default function ChatPage({ onBack }: ChatPageProps) {
     const personaName = persona.name;
 
     // Add typing indicator for AI
-        setMessages((prev) => [
-          ...prev,
-          { sender: "ai", text: "", isTyping: true },
-        ]);
+    setMessages((prev) => [
+      ...prev,
+      { sender: "ai", text: "", isTyping: true },
+    ]);
 
     // Get AI response (webhook or default)
     let aiResponse = "This is a sample response from your AI Persona.";
@@ -558,64 +584,66 @@ export default function ChatPage({ onBack }: ChatPageProps) {
       }
     }
 
-        // Store both user message and AI response in MongoDB
+    // Store both user message and AI response in MongoDB
     const token = localStorage.getItem("token");
     const chatData = {
-            user: userId,
-            persona: personaId,
-            session_id: sessionId,
-            user_message: String(trimmed),
+      user: userId,
+      persona: personaId,
+      session_id: sessionId,
+      user_message: String(trimmed),
       ai_response: aiResponse,
       fileUrl,
       fileType,
+      fileUrls,
+      fileTypes,
     };
-    
+
     console.log('Storing chat with file info:', chatData);
-    
+
     const storePromise = fetch(`${import.meta.env.VITE_BACKEND_URL}/api/personas/chats`, {
-        method: "POST",
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-        body: JSON.stringify(chatData),
-      })
-        .then((res) => {
-          if (!res.ok) {
+      body: JSON.stringify(chatData),
+    })
+      .then((res) => {
+        if (!res.ok) {
           throw new Error("Failed to store chat");
-          }
-          return res.json();
-        })
-        .then((data) => {
-          // Update the user message with the MongoDB _id for editing capability
-          if (data.success && data.chat && data.chat._id) {
-            setMessages((prev) => 
-              prev.map((msg) => 
-                msg.id === messageId && msg.sender === "user" 
-                  ? { ...msg, id: data.chat._id }
-                  : msg
-              )
-            );
-          }
-        })
-        .catch((err) => {
-          console.error("Error storing chat in MongoDB:", err);
-        });
+        }
+        return res.json();
+      })
+      .then((data) => {
+        // Update the user message with the MongoDB _id for editing capability
+        if (data.success && data.chat && data.chat._id) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === messageId && msg.sender === "user"
+                ? { ...msg, id: data.chat._id }
+                : msg
+            )
+          );
+        }
+      })
+      .catch((err) => {
+        console.error("Error storing chat in MongoDB:", err);
+      });
 
-      setTimeout(() => {
-        setMessages((prev) => {
-          const newMessages = [...prev];
-          newMessages[newMessages.length - 1] = {
-            sender: "ai",
-            text: aiResponse,
-            isTyping: false,
-          };
-          return newMessages;
-        });
-      }, 800);
+    setTimeout(() => {
+      setMessages((prev) => {
+        const newMessages = [...prev];
+        newMessages[newMessages.length - 1] = {
+          sender: "ai",
+          text: aiResponse,
+          isTyping: false,
+        };
+        return newMessages;
+      });
+    }, 800);
 
-      // Wait for chat to be stored
-      await storePromise;
+    // Wait for chat to be stored
+    await storePromise;
   };
 
   // Check if user has sent first message
@@ -751,6 +779,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                   px: { xs: 2, sm: 0 },
                   pt: { xs: 2, sm: 3 },
                   pb: { xs: 1, sm: 2 },
+                  position: 'relative',
                 }}
               >
                 {/* Avatar - clicks to view persona */}
@@ -790,7 +819,8 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                   {persona.name}
                 </Typography>
 
-                {/* Role */}
+                {/* Role + Switch Persona Button */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography
                     variant="subtitle1"
                     sx={{
@@ -802,6 +832,19 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                   >
                     {persona.role}
                   </Typography>
+                  <AutorenewIcon
+                    onClick={() => setSwitcherOpen(true)}
+                    sx={{
+                      ml: 1,
+                      color: '#2e7d32',
+                      fontSize: 32,
+                      cursor: 'pointer',
+                      borderRadius: '50%',
+                      transition: 'background 0.2s',
+                      '&:hover': { background: '#e8f5e9' },
+                    }}
+                  />
+                </Box>
 
                 {/* Department */}
                 {persona.department && (
@@ -823,7 +866,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                 {persona.description && (
                   <Typography
                     variant="body2"
-                      sx={{
+                    sx={{
                       color: "#888",
                       fontWeight: 400,
                       fontSize: { xs: 13, sm: 15 },
@@ -834,6 +877,32 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                     {persona.description}
                   </Typography>
                 )}
+
+                {/* Switch Persona Modal */}
+                <Dialog open={switcherOpen} onClose={handleSwitcherClose} maxWidth="xs" fullWidth>
+                  <DialogTitle sx={{ fontWeight: 600, fontSize: 22, color: '#222', textAlign: 'center' }}>Switch Persona</DialogTitle>
+                  <DialogContent sx={{ p: 3 }}>
+                    {allPersonas.filter(p => p.id !== persona.id).map((p) => (
+                      <Box
+                        key={p.id}
+                        sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, cursor: 'pointer', borderRadius: 2, p: 1.2, '&:hover': { background: '#f5f5f5' } }}
+                        onClick={() => handleSwitchPersona(p.id)}
+                      >
+                        <Avatar src={p.avatar} sx={{ width: 48, height: 48 }} />
+                        <Box>
+                          <Typography sx={{ fontWeight: 600, fontSize: 18, color: '#222' }}>{p.name}</Typography>
+                          <Typography sx={{ color: '#2e7d32', fontSize: 16 }}>{p.role}</Typography>
+                        </Box>
+                      </Box>
+                    ))}
+                    {allPersonas.filter(p => p.id !== persona.id).length === 0 && (
+                      <Typography sx={{ color: '#888', textAlign: 'center', mt: 2 }}>No other personas available.</Typography>
+                    )}
+                  </DialogContent>
+                  <DialogActions sx={{ justifyContent: 'center', pb: 2 }}>
+                    <Button onClick={handleSwitcherClose} variant="outlined" color="primary">Cancel</Button>
+                  </DialogActions>
+                </Dialog>
               </Box>
 
               {/* Messages */}
@@ -935,7 +1004,7 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                   </Box>
                 ) : (
                   <Box key={idx} data-msg-idx={idx} sx={{ width: "100%", display: "flex", justifyContent: "flex-end", mb: 2, mr: { xs: 0, sm: 4 } }}>
-                    <Box sx={{ display: "flex", flexDirection: "row-reverse", alignItems: "flex-end", gap: 2 }}>
+                    <Box sx={{ display: "flex", flexDirection: "row-reverse", alignItems: "flex-end", gap: 1 }}>
                       <Avatar sx={{ width: 42, height: 42, mb: 0.5 }}>
                         {userAvatar ? (
                           <img src={userAvatar} alt="User" style={{ width: 48, height: 48, borderRadius: "50%" }} />
@@ -945,57 +1014,52 @@ export default function ChatPage({ onBack }: ChatPageProps) {
                       </Avatar>
                       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, maxWidth: { xs: "100%", sm: 400 } }}>
                         {/* Multiple images support */}
-                        {Array.isArray(msg.fileUrls) && msg.fileUrls.length > 0 && (
+                        {msg.fileUrls && msg.fileUrls.length > 0 && (
                           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
-                            {msg.fileUrls.map((url: string, idx: number) => (
+                            {msg.fileUrls.map((url: string, i: number) => (
                               <img
-                                key={idx}
+                                key={i}
                                 src={url}
-                                alt={`attachment-${idx}`}
-                                style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8 }}
+                                alt={`attachment-${i}`}
+                                style={{ width: '3rem', height: '3rem', display: 'block' }}
                               />
                             ))}
                           </Box>
                         )}
                         {/* Single file fallback */}
                         {msg.fileUrl && !msg.fileUrls && (
-                          <Box sx={{ bgcolor: "#00875A", borderRadius: 3, p: 1, boxShadow: "0 2px 8px rgba(44,62,80,0.04)" }}>
-                            {msg.fileType && msg.fileType.startsWith('image/') ? (
-                              <img 
-                                src={msg.fileUrl} 
-                                alt="attachment" 
-                                style={{
-                                  maxWidth: 250, 
-                                  maxHeight: 250, 
-                                  borderRadius: 8,
-                                  display: 'block',
-                                  width: '100%',
-                                  height: 'auto'
-                                }}
-                              />
-                            ) : (
-                              <Box 
-                                sx={{ 
-                                  width: 20, 
-                                  height: 20, 
-                                  bgcolor: '#fff', 
-                                  borderRadius: 1,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  cursor: 'pointer'
-                                }}
-                                onClick={() => window.open(msg.fileUrl, '_blank')}
-                              >
-                                <Box sx={{ 
-                                  width: 12, 
-                                  height: 12, 
-                                  bgcolor: '#00875A', 
-                                  borderRadius: 0.5 
-                                }} />
-                              </Box>
-                            )}
-                          </Box>
+                          msg.fileType && msg.fileType.startsWith('image/') ? (
+                            <img 
+                              src={msg.fileUrl} 
+                              alt="attachment" 
+                              style={{
+                                width: '3rem',
+                                height: '3rem',
+                                display: 'block',
+                              }}
+                            />
+                          ) : (
+                            <Box 
+                              sx={{ 
+                                width: 20, 
+                                height: 20, 
+                                bgcolor: '#fff', 
+                                borderRadius: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => window.open(msg.fileUrl, '_blank')}
+                            >
+                              <Box sx={{ 
+                                width: 12, 
+                                height: 12, 
+                                bgcolor: '#00875A', 
+                                borderRadius: 0.5 
+                              }} />
+                            </Box>
+                          )
                         )}
                         {msg.text && (
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>

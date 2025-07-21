@@ -74,9 +74,9 @@ const LoginForm: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#fff' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#fff', justifyContent: 'center', alignItems: 'center' }}>
       {/* Left: Form */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', px: 4 }}>
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', px: 4, maxWidth: 480 }}>
         <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%', maxWidth: 370 }}>
           <Typography variant="h5" sx={{ fontWeight: 800, mb: 4, color: '#222' }}>Log in</Typography>
           {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
@@ -165,15 +165,6 @@ const LoginForm: React.FC = () => {
             </Button>
           </Typography>
         </Box>
-      </Box>
-      {/* Right: Image */}
-      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#073b2a', height: '100vh' }}>
-        <Box
-          component="img"
-          src="https://th.bing.com/th/id/OIP.cFeKv_CFZJQcGRXPuj4neAHaEa?w=292&h=180&c=7&r=0&o=7&dpr=1.5&pid=1.7&rm=3"
-          alt="Pine Labs Devices"
-          sx={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0, boxShadow: 'none', background: 'transparent' }}
-        />
       </Box>
     </Box>
   );

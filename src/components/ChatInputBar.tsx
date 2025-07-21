@@ -1,10 +1,11 @@
 import React, { useRef, useState } from "react";
-import { Box, IconButton, Paper, InputBase, Chip } from "@mui/material";
+import { Box, IconButton, Paper, InputBase, Chip, Menu, MenuItem } from "@mui/material";
 import { IoSend } from "react-icons/io5";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import type { Persona } from "../types";
 import CircularProgress from '@mui/material/CircularProgress';
 import { useDropzone } from 'react-dropzone';
+import DriveFolderIcon from '@mui/icons-material/DriveFolderUpload';
 
 interface ChatInputBarProps {
   value?: string;
@@ -39,6 +40,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
   const [filePreviewUrls, setFilePreviewUrls] = useState<(string | null)[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   // Handle input change
   const handleInputChange = (newValue: string) => {
@@ -221,6 +223,101 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
     isDragActive
   } = useDropzone({ onDrop, multiple: true, noClick: true as any });
 
+  // Google Picker constants (replace with your real values)
+  const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+  const GOOGLE_API_KEY = "YOUR_GOOGLE_API_KEY";
+
+  // Google Picker logic
+  let oauthToken: string | null = null;
+  let pickerApiLoaded = false;
+
+  function onAuthApiLoad() {
+    window.gapi.auth.authorize(
+      {
+        'client_id': GOOGLE_CLIENT_ID,
+        'scope': ['https://www.googleapis.com/auth/drive.readonly'],
+        'immediate': false
+      },
+      handleAuthResult
+    );
+  }
+
+  function onPickerApiLoad() {
+    pickerApiLoaded = true;
+  }
+
+  function handleAuthResult(authResult: any) {
+    if (authResult && !authResult.error) {
+      oauthToken = authResult.access_token;
+      createPicker();
+    }
+  }
+
+  function createPicker() {
+    if (pickerApiLoaded && oauthToken) {
+      const picker = new window.google.picker.PickerBuilder()
+        .addView(window.google.picker.ViewId.DOCS)
+        .setOAuthToken(oauthToken)
+        .setDeveloperKey(GOOGLE_API_KEY)
+        .setCallback(pickerCallback)
+        .build();
+      picker.setVisible(true);
+    }
+  }
+
+  function pickerCallback(data: any) {
+    if (data.action === window.google.picker.Action.PICKED) {
+      const file = data.docs[0];
+      // For images, use file.url; for others, use file.url or file.embedUrl
+      if (file && file.url) {
+        // Call onSend with the file URL (as an image or file link)
+        if (file.url.match(/\.(jpg|jpeg|png|gif)$/i)) {
+          // Image
+          if (typeof window.onSendFromDrive === 'function') {
+            window.onSendFromDrive({ fileUrl: file.url, fileType: file.mimeType });
+          }
+        } else {
+          // Other file types: send as a link
+          if (typeof window.onSendFromDrive === 'function') {
+            window.onSendFromDrive({ message: file.name + ': ' + file.url });
+          }
+        }
+      }
+    }
+  }
+
+  const openGooglePicker = () => {
+    if (!window.gapi) {
+      alert('Google API not loaded.');
+      return;
+    }
+    window.gapi.load('auth', { callback: onAuthApiLoad });
+    window.gapi.load('picker', { callback: onPickerApiLoad });
+  };
+
+  // Attach a global handler for Google Picker callback
+  (window as any).onSendFromDrive = (fileObj: any) => {
+    if (onSend) onSend(fileObj);
+  };
+
+  const handleClipClick = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleLocalUpload = () => {
+    handleMenuClose();
+    fileInputRef.current?.click();
+  };
+
+  const handleGoogleDrive = () => {
+    handleMenuClose();
+    openGooglePicker();
+  };
+
   return (
     <Box
       sx={{
@@ -395,23 +492,16 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
         >
           {/* File upload button (always visible) */}
             <IconButton
-              onClick={handleUploadClick}
-              sx={{
-                mr: 1,
-              backgroundColor: "transparent !important",
-                "&:hover": {
-                backgroundColor: "transparent !important",
-              },
-              "&:focus": {
-                backgroundColor: "transparent !important",
-                },
-              }}
+              onClick={handleClipClick}
               disabled={disabled}
-            disableRipple
-            disableFocusRipple
+              title="Attach file"
             >
               <AttachFileIcon sx={{ fontSize: 20 }} />
             </IconButton>
+            <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
+              <MenuItem onClick={handleLocalUpload}>Upload from device</MenuItem>
+              <MenuItem onClick={handleGoogleDrive}>Pick from Google Drive</MenuItem>
+            </Menu>
 
           {/* Main input field */}
           <InputBase

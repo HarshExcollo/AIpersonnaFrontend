@@ -150,7 +150,9 @@ const Sidebar: React.FC<{
   const handleNewChat = () => {
     const defaultPersona = personas[0];
     if (defaultPersona) {
-      navigate(`/chat/${defaultPersona.id}`);
+      // Generate a unique session id for a new chat
+      const sessionId = Date.now().toString();
+      navigate(`/chat/${defaultPersona.id}?session=${sessionId}`);
       if (onClose) onClose();
     }
   };
@@ -247,6 +249,7 @@ const Sidebar: React.FC<{
       <Button
         variant="contained"
         startIcon={<AddIcon />}
+        disabled={personas.length === 0}
         sx={{
           bgcolor: "#0A9969",
           color: "#fff",

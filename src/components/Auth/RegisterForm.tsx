@@ -79,9 +79,9 @@ const RegisterForm: React.FC = () => {
 
   return (
     <>
-      <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#fff' }}>
+      <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#fff', justifyContent: 'center', alignItems: 'center' }}>
         {/* Left: Form */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', px: 4 }}>
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', px: 4, maxWidth: 480 }}>
           <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%', maxWidth: 370 }}>
             <Typography variant="h5" sx={{ fontWeight: 800, mb: 2.5, color: '#222', textAlign: 'left' }}>Create Account</Typography>
             <Typography sx={{ color: '#6b7280', fontWeight: 500, fontSize: 16, mb: 3, textAlign: 'left', lineHeight: 1.3 }}>
@@ -176,15 +176,6 @@ const RegisterForm: React.FC = () => {
               </Link>
             </Typography>
           </Box>
-        </Box>
-        {/* Right: Image and Caption */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', bgcolor: '#073b2a', height: '100vh', position: 'relative' }}>
-          <Box
-            component="img"
-            src="https://th.bing.com/th/id/OIP.cFeKv_CFZJQcGRXPuj4neAHaEa?w=292&h=180&c=7&r=0&o=7&dpr=1.5&pid=1.7&rm=3"
-            alt="Pine Labs Devices"
-            sx={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0, boxShadow: 'none', background: 'transparent', maxHeight: '70%' }}
-          />
         </Box>
       </Box>
       <TermsAndConditionsDialog open={termsOpen} onClose={handleClose} onAgree={handleAgree} />
